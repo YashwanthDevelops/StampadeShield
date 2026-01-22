@@ -1,145 +1,229 @@
+"""
+╔═══════════════════════════════════════════════════════════╗
+║              SURGE SHIELD - LIVE DASHBOARD                ║
+║                  Day 4 Complete Version                   ║
+║            With New Design System & All Features          ║
+╚═══════════════════════════════════════════════════════════╝
+"""
+
 import sys
+import os
 import time
 import random
 from collections import deque
 from datetime import datetime, timedelta
+
 from dash import Dash, html, dcc
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 
 # Add parent path for imports
-sys.path.insert(0, '..')
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
 
+# Import UDP Receiver
+try:
+    from udp_receiver import UDPReceiver
+    HAS_UDP = True
+    print("✅ UDP Receiver module loaded")
+except ImportError:
+    HAS_UDP = False
+    print("⚠️  UDP Receiver not found - Live mode disabled")
+
+# Import Engine
 try:
     from engine.surge_engine import SurgeEngine
-    from engine.alert_manager import AlertManager
+    from engine.alert_manager import AlertManager, AlertLevel
     HAS_ENGINE = True
+    print("✅ Engine modules loaded")
 except ImportError:
     HAS_ENGINE = False
-    print("Warning: Engine modules not found. Using standalone mode.")
+    print("⚠️  Engine not found - Using standalone mode")
 
-# Initialize app
-app = Dash(
-    __name__,
-    external_stylesheets=[dbc.themes.BOOTSTRAP],
-    suppress_callback_exceptions=True
-)
-
-app.title = "StampedeShield Monitor"
 
 # ═══════════════════════════════════════════════════════════
-#                  COLOR SCHEME (from provided CSS)
+#                    DESIGN SYSTEM COLORS
 # ═══════════════════════════════════════════════════════════
 
-# Dark mode colors (oklch converted to hex)
+# Based on your CSS design tokens (dark mode)
 COLORS = {
-    # Backgrounds
-    "background": "#1a1a1a",        # oklch(0.2046 0 0)
-    "card": "#2b2b2b",              # oklch(0.2686 0 0)
-    "sidebar": "#161616",           # oklch(0.1684 0 0)
-    "muted": "#1f1f1f",             # oklch(0.2393 0 0)
+    # Base
+    "background": "#1a1a1f",
+    "foreground": "#c9c5be",
+    "card": "#1f1f24",
+    "card_foreground": "#f7f5f2",
+    "border": "#2e2c28",
     
-    # Foregrounds
-    "foreground": "#ebebeb",        # oklch(0.9219 0 0)
-    "muted_foreground": "#a8a8a8",  # oklch(0.7155 0 0)
+    # Primary
+    "primary": "#c4753a",
+    "primary_foreground": "#ffffff",
     
-    # Borders
-    "border": "#4a4a4a",            # oklch(0.3715 0 0)
+    # Muted
+    "muted": "#151517",
+    "muted_foreground": "#8a8680",
     
-    # Primary (warm orange)
-    "primary": "#d4915c",           # oklch(0.7686 0.1647 70.0804)
+    # Accent
+    "accent": "#141210",
+    "accent_foreground": "#f3f1ed",
     
-    # Accent (brown)
-    "accent": "#8b5a2b",            # oklch(0.4732 0.1247 46.2007)
+    # Charts
+    "chart_1": "#c4753a",  # Orange/Rust
+    "chart_2": "#9b6dd6",  # Purple
+    "chart_3": "#22c55e",  # Green
+    "chart_4": "#3b82f6",  # Blue
+    "chart_5": "#f97316",  # Bright Orange
     
-    # Destructive (red)
-    "destructive": "#dc2626",       # oklch(0.6368 0.2078 25.3313)
+    # Destructive
+    "destructive": "#dc2626",
     
-    # Chart colors
-    "chart_1": "#d4a574",           # oklch(0.7686 0.1647 70.0804) - warm orange
-    "chart_2": "#c4864a",           # oklch(0.6658 0.1574 58.3183) - darker orange
-    "chart_3": "#a66832",           # oklch(0.5553 0.1455 48.9975) - brown-orange
-    "chart_4": "#8b5a2b",           # oklch(0.4732 0.1247 46.2007) - brown
-    "chart_5": "#704a24",           # oklch(0.4137 0.1054 45.9038) - dark brown
-}
-
-# Zone colors using chart palette
-ZONE_COLORS = {
-    "A": COLORS["chart_1"],  # #d4a574 warm orange
-    "B": COLORS["chart_2"],  # #c4864a darker orange
-    "C": COLORS["chart_3"],  # #a66832 brown-orange
+    # Input
+    "input": "#3a3835",
+    "ring": "#c4753a",
 }
 
 # State colors
 STATE_COLORS = {
-    "CLEAR": "#22c55e",      # green
-    "NORMAL": "#3b82f6",     # blue
-    "ELEVATED": "#eab308",   # yellow
-    "CRITICAL": "#f97316",   # orange
-    "SURGE": "#ef4444"       # red
+    "CLEAR": "#22c55e",      # Green
+    "NORMAL": "#3b82f6",     # Blue
+    "ELEVATED": "#eab308",   # Yellow
+    "CRITICAL": "#f97316",   # Orange
+    "SURGE": "#ef4444",      # Red
+    "OFFLINE": "#6b7280"     # Gray
 }
 
-# Zone labels
-ZONE_LABELS = {"A": "ENTRY", "B": "CORRIDOR", "C": "EXIT"}
+# Zone colors
+ZONE_COLORS = {
+    "A": "#c4753a",  # Rust orange
+    "B": "#9b6dd6",  # Purple
+    "C": "#3b82f6"   # Blue
+}
+
+ZONE_LABELS = {
+    "A": "ENTRY",
+    "B": "CORRIDOR", 
+    "C": "EXIT"
+}
+
+# Room configuration (meters)
+ROOM_WIDTH = 10
+ROOM_HEIGHT = 10
+NODE_POSITIONS = {
+    "A": (1, 9),     # Top-left (Entry)
+    "B": (9, 9),     # Top-right (Corridor)
+    "C": (5, 1)      # Bottom-center (Exit/Door)
+}
 
 
 # ═══════════════════════════════════════════════════════════
-#                  SIMULATION DATA GENERATOR
+#                    SIMULATION ENGINE
 # ═══════════════════════════════════════════════════════════
+
+SCENARIOS = {
+    "NORMAL": {
+        "dist_range": (150, 300),
+        "wifi_range": (3, 8),
+        "pir_prob": 0.15,
+        "sound_range": (30, 50),
+    },
+    "BUSY": {
+        "dist_range": (80, 150),
+        "wifi_range": (12, 20),
+        "pir_prob": 0.5,
+        "sound_range": (55, 70),
+    },
+    "SURGE": {
+        "dist_range": (20, 60),
+        "wifi_range": (25, 40),
+        "pir_prob": 0.95,
+        "sound_range": (75, 95),
+    }
+}
+
 
 def generate_sim_data(scenario: str) -> dict:
-    """Generate fake sensor data based on scenario."""
+    """Generate simulated sensor data."""
+    params = SCENARIOS.get(scenario, SCENARIOS["NORMAL"])
+    
     data = {}
     for node_id in ["A", "B", "C"]:
-        if scenario == "SURGE":
-            data[node_id] = {
-                "dist": random.randint(20, 60),
-                "pir": 1,
-                "wifi": random.randint(20, 35),
-                "sound": random.randint(70, 90)
-            }
-        elif scenario == "BUSY":
-            data[node_id] = {
-                "dist": random.randint(50, 150),
-                "pir": random.choice([0, 1]),
-                "wifi": random.randint(8, 15),
-                "sound": random.randint(50, 70)
-            }
-        else:  # NORMAL
-            data[node_id] = {
-                "dist": random.randint(150, 300),
-                "pir": random.choice([0, 0, 0, 1]),
-                "wifi": random.randint(2, 5),
-                "sound": random.randint(20, 40)
-            }
+        dist_min, dist_max = params["dist_range"]
+        wifi_min, wifi_max = params["wifi_range"]
+        sound_min, sound_max = params["sound_range"]
+        
+        base_dist = random.randint(dist_min, dist_max)
+        # Add node-specific variation
+        if node_id == "C":
+            base_dist = int(base_dist * 0.9)  # Door is usually busier
+        
+        data[node_id] = {
+            "id": node_id,
+            "zone": ZONE_LABELS[node_id],
+            "dist": base_dist,
+            "pir": 1 if random.random() < params["pir_prob"] else 0,
+            "wifi": random.randint(wifi_min, wifi_max),
+            "sound": random.randint(sound_min, sound_max) if node_id == "C" else 0,
+            "online": True
+        }
+    
     return data
 
 
-def calculate_state_from_data(sensor_data: dict) -> dict:
-    """Calculate surge state from sensor data (standalone mode)."""
+def calculate_state(sensor_data: dict) -> dict:
+    """Calculate system state from sensor data."""
+    if not sensor_data:
+        return {
+            "risk_score": 0,
+            "state": "CLEAR",
+            "zone_states": {"A": "CLEAR", "B": "CLEAR", "C": "CLEAR"},
+            "device_count": 0,
+            "passage_rate": 0
+        }
+    
+    # Aggregate metrics
+    distances = [d.get("dist", 300) for d in sensor_data.values()]
+    avg_dist = sum(distances) / len(distances)
+    min_dist = min(distances)
+    
     total_wifi = sum(d.get("wifi", 0) for d in sensor_data.values())
-    avg_dist = sum(d.get("dist", 300) for d in sensor_data.values()) / 3
+    max_sound = max(d.get("sound", 0) for d in sensor_data.values())
+    pir_active = sum(1 for d in sensor_data.values() if d.get("pir", 0))
     
-    dist_score = max(0, min(1, (300 - avg_dist) / 250))
-    wifi_score = max(0, min(1, total_wifi / 60))
-    risk_score = 0.6 * dist_score + 0.4 * wifi_score
+    # Calculate risk components
+    dist_risk = max(0, min(1, (300 - avg_dist) / 280))
+    crowding_risk = max(0, min(1, (200 - min_dist) / 180)) if min_dist < 200 else 0
+    sound_risk = max(0, min(1, (max_sound - 50) / 45)) if max_sound > 50 else 0
+    motion_risk = pir_active / 3
     
-    if risk_score >= 0.8:
+    # Weighted combination
+    risk_score = (
+        0.35 * dist_risk +
+        0.30 * crowding_risk +
+        0.20 * sound_risk +
+        0.15 * motion_risk
+    )
+    risk_score = max(0, min(1, risk_score))
+    
+    # Determine state
+    if risk_score >= 0.75:
         state = "SURGE"
-    elif risk_score >= 0.6:
+    elif risk_score >= 0.55:
         state = "CRITICAL"
-    elif risk_score >= 0.4:
+    elif risk_score >= 0.35:
         state = "ELEVATED"
-    elif risk_score >= 0.2:
+    elif risk_score >= 0.15:
         state = "NORMAL"
     else:
         state = "CLEAR"
     
+    # Zone states
     zone_states = {}
-    for zone_id, data in sensor_data.items():
-        dist = data.get("dist", 300)
-        if dist < 50:
+    for zone_id, readings in sensor_data.items():
+        dist = readings.get("dist", 300)
+        if not readings.get("online", True):
+            zone_states[zone_id] = "OFFLINE"
+        elif dist < 50:
             zone_states[zone_id] = "SURGE"
         elif dist < 100:
             zone_states[zone_id] = "CRITICAL"
@@ -150,747 +234,784 @@ def calculate_state_from_data(sensor_data: dict) -> dict:
         else:
             zone_states[zone_id] = "CLEAR"
     
-    passage_rate = max(0, int((300 - avg_dist) / 5))
-    
     return {
         "risk_score": risk_score,
         "state": state,
         "zone_states": zone_states,
         "device_count": total_wifi,
-        "passage_rate": passage_rate
+        "passage_rate": max(0, int((300 - avg_dist) / 8))
     }
 
 
+def generate_device_positions(sensor_data: dict) -> list:
+    """Generate device positions for heatmap visualization."""
+    devices = []
+    
+    for node_id, readings in sensor_data.items():
+        if not readings.get("online", True):
+            continue
+            
+        node_x, node_y = NODE_POSITIONS[node_id]
+        dist = readings.get("dist", 300)
+        wifi_count = readings.get("wifi", 0)
+        
+        # More devices when closer
+        crowd_factor = max(0, (300 - dist) / 300)
+        num_devices = int(wifi_count * crowd_factor * 0.5) + 1
+        
+        for _ in range(min(num_devices, 12)):
+            spread = (dist / 150) + 0.3
+            x = node_x + random.gauss(0, spread)
+            y = node_y + random.gauss(0, spread)
+            
+            # Clamp to room
+            x = max(0, min(ROOM_WIDTH, x))
+            y = max(0, min(ROOM_HEIGHT, y))
+            
+            density = 1 - (dist / 300)
+            devices.append({
+                "x": round(x, 2),
+                "y": round(y, 2),
+                "zone": node_id,
+                "density": round(density, 2)
+            })
+    
+    return devices
+
+
 # ═══════════════════════════════════════════════════════════
-#                  DASHBOARD STATE
+#                    DASHBOARD STATE
 # ═══════════════════════════════════════════════════════════
 
 class DashboardState:
+    """Manages all dashboard state and data."""
+    
     def __init__(self):
-        self.last_readings = {}
-        self.last_update = {}
+        # UDP Receiver
+        self.udp_receiver = None
+        if HAS_UDP:
+            try:
+                self.udp_receiver = UDPReceiver(port=5005)
+                self.udp_receiver.start()
+                print("✅ UDP Receiver started on port 5005")
+            except Exception as e:
+                print(f"❌ UDP start failed: {e}")
         
-        # Flow rate history (120 samples = 2 min at 1Hz)
-        self.flow_history = {
-            "A": deque(maxlen=120),
-            "B": deque(maxlen=120),
-            "C": deque(maxlen=120)
-        }
+        # Surge Engine
+        self.surge_engine = None
+        if HAS_ENGINE:
+            try:
+                self.surge_engine = SurgeEngine()
+                print("✅ Surge Engine initialized")
+            except Exception as e:
+                print(f"❌ Engine init failed: {e}")
+        
+        # History for graphs
+        self.flow_history = {z: deque(maxlen=120) for z in ["A", "B", "C"]}
+        self.risk_history = deque(maxlen=120)
         self.flow_time = deque(maxlen=120)
         
-        # PRE-POPULATE with 120 baseline values for full graph from start
+        # Pre-populate
         now = datetime.now()
         for i in range(120):
-            past_time = now - timedelta(seconds=(119 - i))
-            self.flow_time.append(past_time)
-            for zone_id in ["A", "B", "C"]:
-                self.flow_history[zone_id].append(0)
+            t = now - timedelta(seconds=(119 - i))
+            self.flow_time.append(t)
+            self.risk_history.append(0)
+            for z in ["A", "B", "C"]:
+                self.flow_history[z].append(0)
         
-        # Surge tracking
-        self.surge_periods = []
-        self._surge_start = None
-        
-        # Alert history
+        # Alerts
         self.alerts = deque(maxlen=50)
         self.last_alert_time = {}
         
-        # Engine
-        if HAS_ENGINE:
-            self.engine = SurgeEngine()
-            self.alert_manager = AlertManager(cooldown_seconds=10)
-        else:
-            self.engine = None
-            self.alert_manager = None
+        # Surge tracking
+        self._surge_start = None
+        self.surge_periods = []
     
-    def get_data(self, scenario: str = "NORMAL"):
-        """Get current sensor data and process."""
-        sensor_data = generate_sim_data(scenario)
-        current_time = time.time()
+    def get_data(self, mode: str, scenario: str):
+        """Get current sensor data and calculated state."""
         
-        for node_id in ["A", "B", "C"]:
-            self.last_readings[node_id] = sensor_data[node_id]
-            self.last_update[node_id] = current_time
-        
-        if self.engine:
-            surge_state = self.engine.process(sensor_data)
-            surge_dict = {
-                "risk_score": surge_state.risk_score,
-                "state": surge_state.state,
-                "zone_states": surge_state.zone_states,
-                "device_count": surge_state.device_count,
-                "passage_rate": surge_state.passage_rate
-            }
+        # Get raw data
+        if mode == 'SIM':
+            raw_data = generate_sim_data(scenario)
         else:
-            surge_dict = calculate_state_from_data(sensor_data)
+            if self.udp_receiver:
+                raw_data = self.udp_receiver.get_all_latest()
+                for node in ["A", "B", "C"]:
+                    if node not in raw_data:
+                        raw_data[node] = {
+                            "id": node,
+                            "zone": ZONE_LABELS[node],
+                            "dist": 400,
+                            "pir": 0,
+                            "wifi": 0,
+                            "sound": 0,
+                            "online": False
+                        }
+                    else:
+                        raw_data[node]["online"] = True
+            else:
+                raw_data = generate_sim_data("NORMAL")
         
-        # Update flow history
+        # Calculate state
+        if self.surge_engine and mode != 'SIM':
+            state_data = self.surge_engine.process_sensor_data(raw_data)
+        else:
+            state_data = calculate_state(raw_data)
+        
+        # Generate positions
+        devices = generate_device_positions(raw_data)
+        
+        # Update history
         now = datetime.now()
         self.flow_time.append(now)
+        self.risk_history.append(state_data["risk_score"])
         
-        for zone_id in ["A", "B", "C"]:
-            dist = sensor_data[zone_id]["dist"]
-            flow = max(0, int((300 - dist) / 5))
-            self.flow_history[zone_id].append(flow)
+        for z in ["A", "B", "C"]:
+            if z in raw_data:
+                dist = raw_data[z].get("dist", 300)
+                flow = max(0, int((300 - dist) / 6))
+            else:
+                flow = 0
+            self.flow_history[z].append(flow)
         
-        # Track surge periods
-        if surge_dict["state"] == "SURGE":
+        # Track surge
+        if state_data["state"] == "SURGE":
             if self._surge_start is None:
                 self._surge_start = now
         else:
-            if self._surge_start is not None:
+            if self._surge_start:
                 self.surge_periods.append((self._surge_start, now))
                 self._surge_start = None
         
-        self._process_alerts(surge_dict)
+        # Alerts
+        self._process_alerts(state_data)
         
-        return sensor_data, surge_dict
+        return raw_data, state_data, devices
     
-    def _process_alerts(self, surge_dict):
-        """Generate alerts based on state."""
-        state = surge_dict["state"]
+    def _process_alerts(self, state_data: dict):
+        """Generate alerts for concerning states."""
+        state = state_data.get("state", "CLEAR")
         current_time = time.time()
         
-        last_time = self.last_alert_time.get(state, 0)
-        if current_time - last_time < 10:
-            return
-        
-        alert = None
-        if state == "SURGE":
-            alert = {"level": "CRITICAL", "message": "SURGE DETECTED - Immediate action required", "zone": None}
-        elif state == "CRITICAL":
-            alert = {"level": "CRITICAL", "message": "Critical density reached", "zone": None}
-        elif state == "ELEVATED":
-            alert = {"level": "WARNING", "message": "Elevated crowd density", "zone": None}
-        
-        if alert:
-            alert["timestamp"] = current_time
-            self.alerts.append(alert)
-            self.last_alert_time[state] = current_time
-    
-    def get_recent_alerts(self, n=10):
-        return list(self.alerts)[-n:]
+        if state in ["ELEVATED", "CRITICAL", "SURGE"]:
+            last = self.last_alert_time.get(state, 0)
+            if current_time - last > 15:  # 15 second cooldown
+                level = "CRITICAL" if state == "SURGE" else "WARNING"
+                risk_pct = state_data.get("risk_score", 0) * 100
+                msg = f"{state} - Risk at {risk_pct:.0f}%"
+                
+                self.alerts.append({
+                    "level": level,
+                    "message": msg,
+                    "timestamp": current_time,
+                    "state": state
+                })
+                self.last_alert_time[state] = current_time
 
 
-state = DashboardState()
+# Initialize global state
+dashboard_state = DashboardState()
 
 
 # ═══════════════════════════════════════════════════════════
-#                       COMPONENTS
+#                      DASH APP
 # ═══════════════════════════════════════════════════════════
 
-def create_header():
-    """Create dashboard header."""
-    return html.Div(
-        style={
-            "display": "flex",
-            "justifyContent": "space-between",
-            "alignItems": "center",
-            "padding": "1rem 2rem",
-            "background": COLORS["card"],
-            "borderBottom": f"1px solid {COLORS['border']}"
-        },
-        children=[
-            html.H1(
-                "🛡️ STAMPEDE SHIELD v1.0",
-                style={
-                    "color": COLORS["foreground"],
-                    "margin": 0,
-                    "fontSize": "1.5rem",
-                    "fontFamily": "Inter, sans-serif"
-                }
-            ),
-            html.Div(
-                style={"display": "flex", "alignItems": "center", "gap": "1.5rem"},
-                children=[
-                    # Scenario dropdown
-                    html.Div([
-                        html.Label(
-                            "Scenario:",
-                            style={
-                                "color": COLORS["muted_foreground"],
-                                "marginRight": "0.5rem",
-                                "fontSize": "0.8rem"
-                            }
-                        ),
-                        dcc.Dropdown(
-                            id="scenario-dropdown",
-                            options=[
-                                {"label": "NORMAL", "value": "NORMAL"},
-                                {"label": "BUSY", "value": "BUSY"},
-                                {"label": "SURGE", "value": "SURGE"}
-                            ],
-                            value="NORMAL",
-                            clearable=False,
-                            style={"width": "120px"}
-                        )
-                    ], id="scenario-container", style={"display": "flex", "alignItems": "center"}),
-                    
-                    # Mode toggle
-                    html.Div([
-                        dbc.Switch(
-                            id="mode-toggle",
-                            value=True,
-                            style={"marginRight": "0.5rem"}
-                        ),
-                        html.Span(
-                            "SIM",
-                            id="mode-label",
-                            style={"color": COLORS["primary"], "fontWeight": "bold"}
-                        )
-                    ], style={"display": "flex", "alignItems": "center"}),
-                    
-                    # Live indicator
-                    html.Div([
-                        html.Div(
-                            id="live-dot",
-                            style={
-                                "width": "10px",
-                                "height": "10px",
-                                "borderRadius": "50%",
-                                "backgroundColor": COLORS["primary"],
-                                "marginRight": "0.5rem"
-                            }
-                        ),
-                        html.Span(
-                            "SIM",
-                            id="live-text",
-                            style={"color": COLORS["primary"], "fontSize": "0.9rem"}
-                        )
-                    ], style={"display": "flex", "alignItems": "center"})
-                ]
-            )
-        ]
-    )
+app = Dash(
+    __name__,
+    external_stylesheets=[dbc.themes.BOOTSTRAP],
+    suppress_callback_exceptions=True,
+    assets_folder='assets'
+)
+app.title = "SURGE SHIELD"
 
+
+# ═══════════════════════════════════════════════════════════
+#                    LAYOUT COMPONENTS
+# ═══════════════════════════════════════════════════════════
 
 def create_zone_card(zone_id: str):
     """Create a zone monitoring card."""
-    label = ZONE_LABELS.get(zone_id, "ZONE")
     return html.Div(
-        id=f"zone-card-{zone_id}",
+        id=f"card-{zone_id}",
+        className="zone-card",
         style={
             "background": COLORS["card"],
-            "borderRadius": "0.375rem",
+            "border": f"1px solid {COLORS['border']}",
+            "borderRadius": "8px",
             "padding": "1.25rem",
             "flex": "1",
             "minWidth": "200px",
-            "border": f"1px solid {COLORS['border']}"
+            "borderLeft": f"3px solid {ZONE_COLORS[zone_id]}"
         },
         children=[
-            html.Div(
-                style={
-                    "display": "flex",
-                    "justifyContent": "space-between",
-                    "alignItems": "center",
-                    "marginBottom": "1rem"
-                },
-                children=[
-                    html.Div([
-                        html.Span(
-                            f"ZONE {zone_id}",
-                            style={
-                                "color": COLORS["foreground"],
-                                "fontWeight": "bold",
-                                "fontSize": "1.1rem"
-                            }
-                        ),
-                        html.Span(
-                            f" · {label}",
-                            style={
-                                "color": COLORS["muted_foreground"],
-                                "fontSize": "0.9rem"
-                            }
-                        )
-                    ]),
-                    html.Span(
-                        "CLEAR",
-                        id=f"zone-status-{zone_id}",
-                        style={
-                            "padding": "0.25rem 0.75rem",
-                            "borderRadius": "0.375rem",
-                            "fontSize": "0.75rem",
-                            "fontWeight": "bold",
-                            "backgroundColor": STATE_COLORS["CLEAR"],
-                            "color": "#fff"
-                        }
-                    )
-                ]
-            ),
-            html.Div(
-                style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "0.75rem"},
-                children=[
-                    html.Div([
-                        html.Div("STATE", style={"color": COLORS["muted_foreground"], "fontSize": "0.7rem"}),
-                        html.Div("--", id=f"zone-state-{zone_id}", style={"color": COLORS["foreground"], "fontSize": "1rem", "fontWeight": "bold"})
-                    ]),
-                    html.Div([
-                        html.Div("FLOW", style={"color": COLORS["muted_foreground"], "fontSize": "0.7rem"}),
-                        html.Div("--/min", id=f"zone-flow-{zone_id}", style={"color": COLORS["foreground"], "fontSize": "1rem"})
-                    ]),
-                    html.Div([
-                        html.Div("DEVICES", style={"color": COLORS["muted_foreground"], "fontSize": "0.7rem"}),
-                        html.Div("--", id=f"zone-devices-{zone_id}", style={"color": COLORS["foreground"], "fontSize": "1rem"})
-                    ]),
-                    html.Div([
-                        html.Div("UPDATED", style={"color": COLORS["muted_foreground"], "fontSize": "0.7rem"}),
-                        html.Div("--:--:--", id=f"zone-time-{zone_id}", style={"color": COLORS["muted_foreground"], "fontSize": "0.85rem", "fontFamily": "JetBrains Mono, monospace"})
-                    ])
-                ]
-            )
-        ]
-    )
-
-
-def create_metrics_panel():
-    """Create metrics panel with 4 items."""
-    return html.Div(
-        style={
-            "display": "flex",
-            "justifyContent": "center",
-            "gap": "3rem",
-            "padding": "1.5rem",
-            "background": COLORS["card"],
-            "borderRadius": "0.375rem",
-            "margin": "1rem 0",
-            "border": f"1px solid {COLORS['border']}"
-        },
-        children=[
-            html.Div([
-                html.Div("RISK", style={"color": COLORS["muted_foreground"], "fontSize": "0.75rem", "textAlign": "center"}),
-                html.Div("0%", id="metric-risk", style={"color": STATE_COLORS["CLEAR"], "fontSize": "1.75rem", "fontWeight": "bold", "textAlign": "center"})
-            ]),
-            html.Div([
-                html.Div("STATE", style={"color": COLORS["muted_foreground"], "fontSize": "0.75rem", "textAlign": "center"}),
-                html.Div("CLEAR", id="metric-state", style={"color": STATE_COLORS["CLEAR"], "fontSize": "1.25rem", "fontWeight": "bold", "textAlign": "center"})
-            ]),
-            html.Div([
-                html.Div("DEVICES", style={"color": COLORS["muted_foreground"], "fontSize": "0.75rem", "textAlign": "center"}),
-                html.Div("0", id="metric-devices", style={"color": COLORS["foreground"], "fontSize": "1.75rem", "fontWeight": "bold", "textAlign": "center"})
-            ]),
-            html.Div([
-                html.Div("RATE", style={"color": COLORS["muted_foreground"], "fontSize": "0.75rem", "textAlign": "center"}),
-                html.Div("0/min", id="metric-passage", style={"color": COLORS["foreground"], "fontSize": "1.5rem", "fontWeight": "bold", "textAlign": "center"})
-            ])
-        ]
-    )
-
-
-def create_flow_graph():
-    """Create large flow rate graph."""
-    return html.Div(
-        style={
-            "background": COLORS["card"],
-            "borderRadius": "0.375rem",
-            "padding": "1rem",
-            "margin": "1rem 0",
-            "border": f"1px solid {COLORS['border']}",
-            "width": "100%",
-            "boxSizing": "border-box"
-        },
-        children=[
-            html.Div(
-                "📈 FLOW RATE MONITOR (Last 2 minutes)",
-                style={
+            # Header
+            html.Div(style={
+                "display": "flex",
+                "justifyContent": "space-between",
+                "alignItems": "center",
+                "marginBottom": "0.75rem"
+            }, children=[
+                html.Div(style={"display": "flex", "alignItems": "center", "gap": "0.5rem"}, children=[
+                    html.Div(style={
+                        "width": "10px",
+                        "height": "10px",
+                        "borderRadius": "50%",
+                        "background": ZONE_COLORS[zone_id]
+                    }),
+                    html.Span(f"ZONE {zone_id}", style={
+                        "color": COLORS["foreground"],
+                        "fontWeight": "600",
+                        "fontSize": "0.9rem"
+                    })
+                ]),
+                html.Span(ZONE_LABELS[zone_id], style={
                     "color": COLORS["muted_foreground"],
-                    "fontSize": "0.85rem",
-                    "marginBottom": "0.5rem",
-                    "fontWeight": "bold",
-                    "fontFamily": "Inter, sans-serif"
-                }
-            ),
-            dcc.Graph(
-                id="flow-graph",
-                config={"displayModeBar": False, "responsive": True},
-                style={"height": "400px", "width": "100%"}
-            )
+                    "fontSize": "0.75rem",
+                    "textTransform": "uppercase",
+                    "letterSpacing": "0.05em"
+                })
+            ]),
+            
+            # Status
+            html.Div(id=f"status-{zone_id}", style={
+                "fontSize": "1.25rem",
+                "fontWeight": "700",
+                "marginBottom": "0.5rem"
+            }),
+            
+            # Details
+            html.Div(id=f"details-{zone_id}", style={
+                "color": COLORS["muted_foreground"],
+                "fontSize": "0.8rem",
+                "fontFamily": "ui-monospace, monospace"
+            })
         ]
     )
 
 
-def create_alert_panel():
-    """Create alert log panel."""
-    return html.Div(
-        style={
-            "background": COLORS["card"],
-            "borderRadius": "0.375rem",
-            "padding": "1rem",
-            "maxHeight": "180px",
-            "border": f"1px solid {COLORS['border']}"
-        },
-        children=[
-            html.Div(
-                "🔔 RECENT ALERTS",
-                style={
-                    "color": COLORS["muted_foreground"],
-                    "fontSize": "0.85rem",
-                    "marginBottom": "0.5rem",
-                    "fontWeight": "bold"
-                }
-            ),
-            html.Div(
-                id="alert-list",
-                style={"height": "130px", "overflowY": "auto"}
-            )
-        ]
-    )
-
-
-# ═══════════════════════════════════════════════════════════
-#                       LAYOUT
-# ═══════════════════════════════════════════════════════════
-
-app.layout = html.Div(
-    style={"backgroundColor": COLORS["background"], "minHeight": "100vh"},
-    children=[
-        dcc.Interval(id='update-interval', interval=500, n_intervals=0),
-        dcc.Store(id='mode-store', data={'mode': 'SIM', 'scenario': 'NORMAL'}),
-        
-        create_header(),
-        
-        html.Div(
-            style={"padding": "1rem 2rem"},
-            children=[
-                html.Div(
-                    style={"display": "flex", "gap": "1rem", "marginBottom": "1rem"},
-                    children=[
-                        create_zone_card("A"),
-                        create_zone_card("B"),
-                        create_zone_card("C")
-                    ]
-                ),
-                create_metrics_panel(),
-                create_flow_graph(),
-                create_alert_panel()
-            ]
-        )
-    ]
-)
-
-
-# ═══════════════════════════════════════════════════════════
-#                       CALLBACKS
-# ═══════════════════════════════════════════════════════════
-
-@app.callback(
-    [
-        Output('mode-store', 'data'),
-        Output('mode-label', 'children'),
-        Output('mode-label', 'style'),
-        Output('scenario-container', 'style')
-    ],
-    [Input('mode-toggle', 'value'), Input('scenario-dropdown', 'value')],
-    State('mode-store', 'data')
-)
-def update_mode(is_sim, scenario, current_data):
-    mode = 'SIM' if is_sim else 'LIVE'
-    new_data = {'mode': mode, 'scenario': scenario or 'NORMAL'}
-    
-    if is_sim:
-        label = "SIM"
-        label_style = {"color": COLORS["primary"], "fontWeight": "bold"}
-        scenario_style = {"display": "flex", "alignItems": "center"}
-    else:
-        label = "LIVE"
-        label_style = {"color": STATE_COLORS["CLEAR"], "fontWeight": "bold"}
-        scenario_style = {"display": "none"}
-    
-    return new_data, label, label_style, scenario_style
-
-
-@app.callback(
-    [
-        # Zone A
-        Output('zone-status-A', 'children'),
-        Output('zone-status-A', 'style'),
-        Output('zone-state-A', 'children'),
-        Output('zone-flow-A', 'children'),
-        Output('zone-devices-A', 'children'),
-        Output('zone-time-A', 'children'),
-        # Zone B
-        Output('zone-status-B', 'children'),
-        Output('zone-status-B', 'style'),
-        Output('zone-state-B', 'children'),
-        Output('zone-flow-B', 'children'),
-        Output('zone-devices-B', 'children'),
-        Output('zone-time-B', 'children'),
-        # Zone C
-        Output('zone-status-C', 'children'),
-        Output('zone-status-C', 'style'),
-        Output('zone-state-C', 'children'),
-        Output('zone-flow-C', 'children'),
-        Output('zone-devices-C', 'children'),
-        Output('zone-time-C', 'children'),
-        # Metrics
-        Output('metric-risk', 'children'),
-        Output('metric-risk', 'style'),
-        Output('metric-state', 'children'),
-        Output('metric-state', 'style'),
-        Output('metric-devices', 'children'),
-        Output('metric-passage', 'children'),
-        # Graph
-        Output('flow-graph', 'figure'),
-        # Live indicator
-        Output('live-dot', 'style'),
-        Output('live-text', 'children'),
-        Output('live-text', 'style'),
-        # Alerts
-        Output('alert-list', 'children')
-    ],
-    [Input('update-interval', 'n_intervals')],
-    [State('mode-store', 'data')]
-)
-def update_dashboard(n, mode_data):
-    mode_data = mode_data or {'mode': 'SIM', 'scenario': 'NORMAL'}
-    is_sim = mode_data.get('mode', 'SIM') == 'SIM'
-    scenario = mode_data.get('scenario', 'NORMAL')
-    
-    sensor_data, surge_dict = state.get_data(scenario)
-    
-    results = []
-    
-    # Zone cards
-    for zone_id in ["A", "B", "C"]:
-        zone_state = surge_dict["zone_states"].get(zone_id, "CLEAR")
-        dist = sensor_data[zone_id]["dist"]
-        flow = max(0, int((300 - dist) / 5))
-        wifi = sensor_data[zone_id]["wifi"]
-        time_str = datetime.now().strftime("%H:%M:%S")
-        
-        badge_style = {
-            "padding": "0.25rem 0.75rem",
-            "borderRadius": "0.375rem",
-            "fontSize": "0.75rem",
-            "fontWeight": "bold",
-            "backgroundColor": STATE_COLORS.get(zone_state, STATE_COLORS["CLEAR"]),
-            "color": "#fff"
-        }
-        
-        results.extend([
-            zone_state,
-            badge_style,
-            zone_state,
-            f"{flow}/min",
-            str(wifi),
-            time_str
-        ])
-    
-    # Metrics
-    risk_val = surge_dict["risk_score"] * 100
-    system_state = surge_dict["state"]
-    
-    if risk_val >= 80:
-        risk_color = STATE_COLORS["SURGE"]
-    elif risk_val >= 60:
-        risk_color = STATE_COLORS["CRITICAL"]
-    elif risk_val >= 40:
-        risk_color = STATE_COLORS["ELEVATED"]
-    elif risk_val >= 20:
-        risk_color = STATE_COLORS["NORMAL"]
-    else:
-        risk_color = STATE_COLORS["CLEAR"]
-    
-    risk_style = {"color": risk_color, "fontSize": "1.75rem", "fontWeight": "bold", "textAlign": "center"}
-    state_style = {"color": STATE_COLORS.get(system_state, STATE_COLORS["CLEAR"]), "fontSize": "1.25rem", "fontWeight": "bold", "textAlign": "center"}
-    
-    results.extend([
-        f"{risk_val:.0f}%",
-        risk_style,
-        system_state,
-        state_style,
-        str(surge_dict["device_count"]),
-        f"{surge_dict['passage_rate']}/min"
+def create_metric_card(metric_id: str, label: str, icon: str):
+    """Create a metric display card."""
+    return html.Div(style={
+        "background": COLORS["card"],
+        "border": f"1px solid {COLORS['border']}",
+        "borderRadius": "8px",
+        "padding": "1.25rem",
+        "textAlign": "center",
+        "minWidth": "130px"
+    }, children=[
+        html.Div(icon, style={"fontSize": "1.25rem", "marginBottom": "0.25rem"}),
+        html.Div(label, style={
+            "color": COLORS["muted_foreground"],
+            "fontSize": "0.7rem",
+            "textTransform": "uppercase",
+            "letterSpacing": "0.05em",
+            "marginBottom": "0.25rem"
+        }),
+        html.Div(id=metric_id, style={
+            "fontSize": "1.75rem",
+            "fontWeight": "700",
+            "color": COLORS["foreground"]
+        })
     ])
+
+
+# ═══════════════════════════════════════════════════════════
+#                       MAIN LAYOUT
+# ═══════════════════════════════════════════════════════════
+
+app.layout = html.Div(style={
+    "background": COLORS["background"],
+    "minHeight": "100vh",
+    "padding": "1.5rem",
+    "fontFamily": "ui-sans-serif, system-ui, -apple-system, sans-serif"
+}, children=[
     
-    # ═══════════════════════════════════════════════════════
-    #                  FLOW GRAPH (FIXED)
-    # ═══════════════════════════════════════════════════════
+    # Intervals and stores
+    dcc.Interval(id='interval', interval=500, n_intervals=0),
+    dcc.Store(id='store', data={'mode': 'SIM', 'scenario': 'NORMAL'}),
     
-    fig = go.Figure()
+    # ─────────────────── HEADER ───────────────────
+    html.Div(style={
+        "display": "flex",
+        "justifyContent": "space-between",
+        "alignItems": "center",
+        "marginBottom": "1.5rem",
+        "paddingBottom": "1rem",
+        "borderBottom": f"1px solid {COLORS['border']}"
+    }, children=[
+        # Logo
+        html.Div(style={"display": "flex", "alignItems": "center", "gap": "0.75rem"}, children=[
+            html.Span("🛡️", style={"fontSize": "1.75rem"}),
+            html.H1("SURGE SHIELD", style={
+                "color": COLORS["foreground"],
+                "margin": 0,
+                "fontSize": "1.5rem",
+                "fontWeight": "700"
+            }),
+            html.Span(id="mode-indicator", style={
+                "padding": "0.25rem 0.75rem",
+                "borderRadius": "9999px",
+                "fontSize": "0.7rem",
+                "fontWeight": "600"
+            })
+        ]),
+        
+        # Controls
+        html.Div(style={"display": "flex", "gap": "1rem", "alignItems": "center"}, children=[
+            dcc.Dropdown(
+                id='scenario',
+                options=[
+                    {"label": "🟢 NORMAL", "value": "NORMAL"},
+                    {"label": "🟡 BUSY", "value": "BUSY"},
+                    {"label": "🔴 SURGE", "value": "SURGE"}
+                ],
+                value="NORMAL",
+                clearable=False,
+                style={"width": "140px", "fontSize": "0.85rem"}
+            ),
+            html.Div(style={"display": "flex", "alignItems": "center", "gap": "0.5rem"}, children=[
+                dbc.Switch(id='mode-switch', value=True),
+                html.Span(id="mode-label", style={
+                    "color": COLORS["primary"],
+                    "fontWeight": "600",
+                    "fontSize": "0.85rem"
+                })
+            ])
+        ])
+    ]),
+    
+    # ─────────────────── ZONE CARDS ───────────────────
+    html.Div(style={
+        "display": "grid",
+        "gridTemplateColumns": "repeat(3, 1fr)",
+        "gap": "1rem",
+        "marginBottom": "1.5rem"
+    }, children=[
+        create_zone_card("A"),
+        create_zone_card("B"),
+        create_zone_card("C")
+    ]),
+    
+    # ─────────────────── METRICS ROW ───────────────────
+    html.Div(style={
+        "display": "flex",
+        "justifyContent": "center",
+        "gap": "1rem",
+        "marginBottom": "1.5rem",
+        "flexWrap": "wrap"
+    }, children=[
+        create_metric_card("risk-value", "Risk Score", "📊"),
+        create_metric_card("state-value", "System State", "🎯"),
+        create_metric_card("device-value", "Devices", "📱"),
+        create_metric_card("flow-value", "Flow Rate", "🚶")
+    ]),
+    
+    # ─────────────────── MAIN PANELS ───────────────────
+    html.Div(style={
+        "display": "grid",
+        "gridTemplateColumns": "1fr 1fr",
+        "gap": "1rem",
+        "marginBottom": "1rem"
+    }, children=[
+        
+        # HEATMAP PANEL
+        html.Div(style={
+            "background": COLORS["card"],
+            "border": f"1px solid {COLORS['border']}",
+            "borderRadius": "8px",
+            "padding": "1rem"
+        }, children=[
+            html.Div(style={
+                "display": "flex",
+                "alignItems": "center",
+                "gap": "0.5rem",
+                "marginBottom": "0.75rem"
+            }, children=[
+                html.Span("🗺️", style={"fontSize": "1rem"}),
+                html.Span("Zone Heatmap", style={
+                    "color": COLORS["foreground"],
+                    "fontWeight": "600",
+                    "fontSize": "0.875rem"
+                })
+            ]),
+            dcc.Graph(id="heatmap", style={"height": "320px"}, config={"displayModeBar": False})
+        ]),
+        
+        # FLOW GRAPH PANEL
+        html.Div(style={
+            "background": COLORS["card"],
+            "border": f"1px solid {COLORS['border']}",
+            "borderRadius": "8px",
+            "padding": "1rem"
+        }, children=[
+            html.Div(style={
+                "display": "flex",
+                "alignItems": "center",
+                "gap": "0.5rem",
+                "marginBottom": "0.75rem"
+            }, children=[
+                html.Span("📈", style={"fontSize": "1rem"}),
+                html.Span("Flow Rate", style={
+                    "color": COLORS["foreground"],
+                    "fontWeight": "600",
+                    "fontSize": "0.875rem"
+                })
+            ]),
+            dcc.Graph(id="flow-graph", style={"height": "320px"}, config={"displayModeBar": False})
+        ])
+    ]),
+    
+    # ─────────────────── ALERTS PANEL ───────────────────
+    html.Div(style={
+        "background": COLORS["card"],
+        "border": f"1px solid {COLORS['border']}",
+        "borderRadius": "8px",
+        "padding": "1rem"
+    }, children=[
+        html.Div(style={
+            "display": "flex",
+            "alignItems": "center",
+            "gap": "0.5rem",
+            "marginBottom": "0.75rem"
+        }, children=[
+            html.Span("🚨", style={"fontSize": "1rem"}),
+            html.Span("Alert Log", style={
+                "color": COLORS["foreground"],
+                "fontWeight": "600",
+                "fontSize": "0.875rem"
+            })
+        ]),
+        html.Div(id="alerts-panel", style={
+            "maxHeight": "180px",
+            "overflowY": "auto"
+        })
+    ])
+])
+
+
+# ═══════════════════════════════════════════════════════════
+#                      CALLBACKS
+# ═══════════════════════════════════════════════════════════
+
+@app.callback(
+    [Output('store', 'data'),
+     Output('mode-indicator', 'children'),
+     Output('mode-indicator', 'style'),
+     Output('mode-label', 'children')],
+    [Input('mode-switch', 'value'),
+     Input('scenario', 'value')]
+)
+def update_mode(is_sim, scenario):
+    mode = 'SIM' if is_sim else 'LIVE'
+    
+    base_style = {
+        "padding": "0.25rem 0.75rem",
+        "borderRadius": "9999px",
+        "fontSize": "0.7rem",
+        "fontWeight": "600"
+    }
+    
+    if mode == 'SIM':
+        return (
+            {'mode': mode, 'scenario': scenario},
+            "SIMULATION",
+            {**base_style, "background": COLORS["primary"], "color": "#fff"},
+            "SIM"
+        )
+    else:
+        return (
+            {'mode': mode, 'scenario': scenario},
+            "LIVE",
+            {**base_style, "background": STATE_COLORS["CLEAR"], "color": "#000"},
+            "LIVE"
+        )
+
+
+@app.callback(
+    [
+        # Zone outputs (status, style, details) × 3
+        Output("status-A", "children"), Output("status-A", "style"), Output("details-A", "children"),
+        Output("status-B", "children"), Output("status-B", "style"), Output("details-B", "children"),
+        Output("status-C", "children"), Output("status-C", "style"), Output("details-C", "children"),
+        # Metrics
+        Output("risk-value", "children"), Output("risk-value", "style"),
+        Output("state-value", "children"), Output("state-value", "style"),
+        Output("device-value", "children"),
+        Output("flow-value", "children"),
+        # Graphs
+        Output("heatmap", "figure"),
+        Output("flow-graph", "figure"),
+        # Alerts
+        Output("alerts-panel", "children")
+    ],
+    [Input('interval', 'n_intervals')],
+    [State('store', 'data')]
+)
+def update_dashboard(n, store):
+    """Main dashboard update - runs every 500ms."""
+    
+    mode = store.get('mode', 'SIM')
+    scenario = store.get('scenario', 'NORMAL')
+    
+    # Get data
+    raw_data, state_data, devices = dashboard_state.get_data(mode, scenario)
+    
+    outputs = []
+    
+    # ─────────────────── ZONE CARDS ───────────────────
+    for zone in ["A", "B", "C"]:
+        zone_state = state_data.get("zone_states", {}).get(zone, "CLEAR")
+        color = STATE_COLORS.get(zone_state, "#888")
+        readings = raw_data.get(zone, {})
+        
+        online = readings.get("online", True)
+        
+        if not online:
+            outputs.append("OFFLINE")
+            outputs.append({"color": STATE_COLORS["OFFLINE"], "fontSize": "1.25rem", "fontWeight": "700"})
+            outputs.append("No data")
+        else:
+            outputs.append(zone_state)
+            outputs.append({"color": color, "fontSize": "1.25rem", "fontWeight": "700"})
+            
+            dist = readings.get("dist", "?")
+            pir = "🟢" if readings.get("pir") else "⚫"
+            wifi = readings.get("wifi", "?")
+            
+            if zone == "C":
+                sound = readings.get("sound", 0)
+                outputs.append(f"📏 {dist}cm  {pir}  📶 {wifi}  🔊 {sound}dB")
+            else:
+                outputs.append(f"📏 {dist}cm  {pir}  📶 {wifi}")
+    
+    # ─────────────────── METRICS ───────────────────
+    risk_pct = state_data.get("risk_score", 0) * 100
+    sys_state = state_data.get("state", "CLEAR")
+    state_color = STATE_COLORS.get(sys_state, "#888")
+    
+    # Risk
+    outputs.append(f"{risk_pct:.0f}%")
+    risk_color = STATE_COLORS["CLEAR"] if risk_pct < 35 else (STATE_COLORS["ELEVATED"] if risk_pct < 60 else STATE_COLORS["SURGE"])
+    outputs.append({"fontSize": "1.75rem", "fontWeight": "700", "color": risk_color})
+    
+    # State
+    outputs.append(sys_state)
+    outputs.append({"fontSize": "1.75rem", "fontWeight": "700", "color": state_color})
+    
+    # Devices
+    outputs.append(str(state_data.get("device_count", 0)))
+    
+    # Flow
+    outputs.append(f"{state_data.get('passage_rate', 0)}/min")
+    
+    # ─────────────────── HEATMAP ───────────────────
+    heatmap_fig = go.Figure()
+    
+    # Room background
+    heatmap_fig.add_shape(
+        type="rect",
+        x0=0, y0=0, x1=ROOM_WIDTH, y1=ROOM_HEIGHT,
+        fillcolor=COLORS["muted"],
+        line=dict(color=COLORS["border"], width=1)
+    )
+    
+    # Grid
+    for i in range(1, ROOM_WIDTH):
+        heatmap_fig.add_shape(
+            type="line", x0=i, y0=0, x1=i, y1=ROOM_HEIGHT,
+            line=dict(color=COLORS["border"], width=0.5, dash="dot")
+        )
+    for i in range(1, ROOM_HEIGHT):
+        heatmap_fig.add_shape(
+            type="line", x0=0, y0=i, x1=ROOM_WIDTH, y1=i,
+            line=dict(color=COLORS["border"], width=0.5, dash="dot")
+        )
+    
+    # Zone labels
+    zone_label_pos = {"A": (1, 8), "B": (9, 8), "C": (5, 2)}
+    for zone, (lx, ly) in zone_label_pos.items():
+        zone_state = state_data.get("zone_states", {}).get(zone, "CLEAR")
+        heatmap_fig.add_annotation(
+            x=lx, y=ly,
+            text=f"<b>{zone}</b><br>{ZONE_LABELS[zone]}",
+            font=dict(color=ZONE_COLORS[zone], size=10),
+            showarrow=False
+        )
+    
+    # Node markers
+    for node_id, (nx, ny) in NODE_POSITIONS.items():
+        zone_state = state_data.get("zone_states", {}).get(node_id, "CLEAR")
+        color = STATE_COLORS.get(zone_state, "#888")
+        
+        heatmap_fig.add_trace(go.Scatter(
+            x=[nx], y=[ny],
+            mode="markers",
+            marker=dict(
+                size=18,
+                color=color,
+                symbol="diamond",
+                line=dict(width=2, color=COLORS["foreground"])
+            ),
+            name=f"Node {node_id}",
+            hoverinfo="name"
+        ))
+    
+    # Device dots
+    for device in devices:
+        density = device.get("density", 0.5)
+        if density > 0.6:
+            dot_color = "rgba(239, 68, 68, 0.6)"  # Red
+        elif density > 0.3:
+            dot_color = "rgba(234, 179, 8, 0.6)"  # Yellow
+        else:
+            dot_color = "rgba(34, 197, 94, 0.6)"  # Green
+        
+        heatmap_fig.add_trace(go.Scatter(
+            x=[device["x"]],
+            y=[device["y"]],
+            mode="markers",
+            marker=dict(size=7, color=dot_color),
+            showlegend=False,
+            hoverinfo="skip"
+        ))
+    
+    heatmap_fig.update_layout(
+        paper_bgcolor=COLORS["card"],
+        plot_bgcolor=COLORS["card"],
+        margin=dict(l=10, r=10, t=10, b=10),
+        xaxis=dict(range=[-0.5, ROOM_WIDTH + 0.5], showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(range=[-0.5, ROOM_HEIGHT + 0.5], showgrid=False, zeroline=False, showticklabels=False, scaleanchor="x"),
+        showlegend=False
+    )
+    
+    outputs.append(heatmap_fig)
+    
+    # ─────────────────── FLOW GRAPH ───────────────────
+    flow_fig = go.Figure()
     
     now = datetime.now()
-    two_min_ago = now - timedelta(seconds=120)
+    time_list = list(dashboard_state.flow_time)
     
-    # Surge shading
-    for start, end in state.surge_periods[-5:]:
-        if end > two_min_ago:
-            fig.add_vrect(
-                x0=max(start, two_min_ago),
-                x1=end,
-                fillcolor="rgba(239,68,68,0.15)",
-                line_width=0
-            )
+    for zone in ["A", "B", "C"]:
+        flow_fig.add_trace(go.Scatter(
+            x=time_list,
+            y=list(dashboard_state.flow_history[zone]),
+            name=f"Zone {zone}",
+            line=dict(color=ZONE_COLORS[zone], width=2),
+            fill='tozeroy',
+            fillcolor=f"rgba({int(ZONE_COLORS[zone][1:3], 16)}, {int(ZONE_COLORS[zone][3:5], 16)}, {int(ZONE_COLORS[zone][5:7], 16)}, 0.1)"
+        ))
     
-    if state._surge_start and state._surge_start > two_min_ago:
-        fig.add_vrect(
-            x0=state._surge_start,
-            x1=now,
-            fillcolor="rgba(239,68,68,0.15)",
+    # Surge periods
+    for start, end in dashboard_state.surge_periods[-3:]:
+        flow_fig.add_vrect(
+            x0=start, x1=end,
+            fillcolor="rgba(239, 68, 68, 0.15)",
+            layer="below",
             line_width=0
         )
     
-    # Zone lines with chart colors
-    times = list(state.flow_time)
-    for zone_id in ["A", "B", "C"]:
-        fig.add_trace(go.Scatter(
-            x=times,
-            y=list(state.flow_history[zone_id]),
-            mode='lines',
-            name=f"Zone {zone_id}",
-            line=dict(
-                color=ZONE_COLORS[zone_id],
-                width=2,
-                shape='spline'
-            ),
-            hovertemplate=f"Zone {zone_id}: %{{y}}/min<extra></extra>"
-        ))
-    
-    # Critical threshold
-    fig.add_hline(
-        y=30,
-        line_dash="dash",
-        line_color="rgba(239,68,68,0.4)",
-        line_width=1,
-        annotation_text="CRITICAL",
-        annotation_position="right",
-        annotation_font_color=COLORS["muted_foreground"],
-        annotation_font_size=10
-    )
-    
-    # Layout with correct colors
-    fig.update_layout(
+    flow_fig.update_layout(
         paper_bgcolor=COLORS["card"],
         plot_bgcolor=COLORS["card"],
-        font=dict(family="Inter, sans-serif"),
+        margin=dict(l=35, r=10, t=10, b=35),
         xaxis=dict(
+            range=[now - timedelta(seconds=120), now],
             showgrid=False,
-            zeroline=False,
-            showline=False,
-            range=[two_min_ago, now],
-            tickformat="%H:%M:%S",
             tickfont=dict(color=COLORS["muted_foreground"], size=10),
-            dtick=30000,
-            fixedrange=True
+            tickformat="%H:%M:%S"
         ),
         yaxis=dict(
-            showgrid=False,
-            zeroline=False,
-            showline=False,
-            range=[0, 60],
-            tickfont=dict(color=COLORS["muted_foreground"], size=10),
-            fixedrange=True
+            range=[0, 50],
+            showgrid=True,
+            gridcolor=COLORS["border"],
+            tickfont=dict(color=COLORS["muted_foreground"], size=10)
         ),
-        margin=dict(l=50, r=20, t=20, b=50),
-        height=400,
-        autosize=True,
         legend=dict(
             orientation="h",
             yanchor="bottom",
             y=1.02,
-            xanchor="right",
-            x=1,
-            font=dict(color=COLORS["muted_foreground"], size=11)
+            xanchor="center",
+            x=0.5,
+            font=dict(color=COLORS["muted_foreground"], size=10)
         ),
-        hovermode="x unified",
-        hoverlabel=dict(
-            bgcolor=COLORS["card"],
-            font_color=COLORS["foreground"],
-            bordercolor=COLORS["border"]
-        )
+        hovermode="x unified"
     )
     
-    results.append(fig)
+    outputs.append(flow_fig)
     
-    # Live indicator
-    if is_sim:
-        dot_style = {
-            "width": "10px",
-            "height": "10px",
-            "borderRadius": "50%",
-            "backgroundColor": COLORS["primary"],
-            "marginRight": "0.5rem"
-        }
-        live_text = "SIM"
-        live_style = {"color": COLORS["primary"], "fontSize": "0.9rem"}
-    else:
-        dot_style = {
-            "width": "10px",
-            "height": "10px",
-            "borderRadius": "50%",
-            "backgroundColor": STATE_COLORS["CLEAR"],
-            "marginRight": "0.5rem"
-        }
-        live_text = "LIVE"
-        live_style = {"color": STATE_COLORS["CLEAR"], "fontSize": "0.9rem"}
-    
-    results.extend([dot_style, live_text, live_style])
-    
-    # Alerts
-    alerts = state.get_recent_alerts(10)
-    if not alerts:
-        alert_rows = [
-            html.Div(
-                "No alerts yet.",
-                style={
-                    "color": COLORS["muted_foreground"],
-                    "fontStyle": "italic",
-                    "padding": "0.5rem"
-                }
-            )
-        ]
-    else:
-        LEVEL_ICONS = {"INFO": "ℹ️", "WARNING": "⚠️", "CRITICAL": "🚨"}
-        LEVEL_BORDERS = {"INFO": "#3b82f6", "WARNING": "#eab308", "CRITICAL": "#ef4444"}
+    # ─────────────────── ALERTS ───────────────────
+    alert_items = []
+    for alert in reversed(list(dashboard_state.alerts)[-8:]):
+        level = alert.get("level", "INFO")
+        level_color = STATE_COLORS["SURGE"] if level == "CRITICAL" else STATE_COLORS["ELEVATED"]
         
-        alert_rows = []
-        for i, alert in enumerate(reversed(alerts)):
-            ts = datetime.fromtimestamp(alert["timestamp"]).strftime("%H:%M:%S")
-            level = alert["level"]
-            icon = LEVEL_ICONS.get(level, "")
-            border_color = LEVEL_BORDERS.get(level, COLORS["border"])
-            bg = COLORS["muted"] if i % 2 == 0 else COLORS["card"]
-            
-            alert_rows.append(html.Div(
-                style={
-                    "display": "flex",
-                    "justifyContent": "space-between",
-                    "alignItems": "center",
-                    "padding": "0.4rem 0.6rem",
-                    "borderLeft": f"3px solid {border_color}",
-                    "background": bg,
-                    "marginBottom": "2px",
-                    "borderRadius": "2px"
-                },
-                children=[
-                    html.Span(
-                        f"{icon} {alert['message']}",
-                        style={"color": COLORS["foreground"], "fontSize": "0.8rem"}
-                    ),
-                    html.Span(
-                        ts,
-                        style={
-                            "color": COLORS["muted_foreground"],
-                            "fontSize": "0.7rem",
-                            "fontFamily": "JetBrains Mono, monospace"
-                        }
-                    )
-                ]
-            ))
+        alert_items.append(
+            html.Div(style={
+                "display": "flex",
+                "alignItems": "center",
+                "padding": "0.6rem",
+                "borderLeft": f"3px solid {level_color}",
+                "background": COLORS["accent"],
+                "marginBottom": "0.4rem",
+                "borderRadius": "0 4px 4px 0"
+            }, children=[
+                html.Span(
+                    datetime.fromtimestamp(alert["timestamp"]).strftime("%H:%M:%S"),
+                    style={
+                        "color": COLORS["muted_foreground"],
+                        "marginRight": "0.75rem",
+                        "fontSize": "0.75rem",
+                        "fontFamily": "ui-monospace, monospace"
+                    }
+                ),
+                html.Span(
+                    f"[{level}]",
+                    style={
+                        "color": level_color,
+                        "fontWeight": "600",
+                        "marginRight": "0.5rem",
+                        "fontSize": "0.75rem"
+                    }
+                ),
+                html.Span(alert["message"], style={
+                    "color": COLORS["foreground"],
+                    "fontSize": "0.8rem"
+                })
+            ])
+        )
     
-    results.append(alert_rows)
+    if not alert_items:
+        alert_items = [
+            html.Div("No alerts", style={
+                "color": COLORS["muted_foreground"],
+                "textAlign": "center",
+                "padding": "2rem",
+                "fontStyle": "italic"
+            })
+        ]
     
-    return results
+    outputs.append(alert_items)
+    
+    return outputs
 
 
 # ═══════════════════════════════════════════════════════════
-#                       RUN
+#                        RUN
 # ═══════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    print("=" * 50)
-    print("  STAMPEDE SHIELD DASHBOARD")
-    print("=" * 50)
-    print(f"Open: http://127.0.0.1:8050")
-    print(f"Mode: Simulation (toggle in header)")
-    print(f"Scenarios: NORMAL, BUSY, SURGE")
-    print("=" * 50)
-    app.run(debug=True, host='0.0.0.0', port=8050)
+    print()
+    print("╔═══════════════════════════════════════════════════════════╗")
+    print("║              🛡️  SURGE SHIELD DASHBOARD                   ║")
+    print("╠═══════════════════════════════════════════════════════════╣")
+    print(f"║  UDP Receiver: {'✅ Active' if HAS_UDP else '❌ Disabled':^40} ║")
+    print(f"║  Surge Engine: {'✅ Active' if HAS_ENGINE else '⚠️  Standalone':^40} ║")
+    print("╠═══════════════════════════════════════════════════════════╣")
+    print("║  Starting on http://localhost:8050                        ║")
+    print("╚═══════════════════════════════════════════════════════════╝")
+    print()
+    
+    app.run(debug=True, host="0.0.0.0", port=8050)

@@ -1,178 +1,197 @@
 """
-STAMPEDE PREVENTION SYSTEM - COORDINATOR WITH ALGORITHMS
+STAMPEDE PREVENTION SYSTEM
+Full Coordinator with Algorithms
 """
 
 import paho.mqtt.client as mqtt
 import json
 from datetime import datetime
+import sys
+import os
+
+# Add algorithms to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'algorithms'))
+
+from zone_detector import ZoneDetector
+from cluster_detector import ClusterDetector
+from stampede_predictor import StampedePredictor
 
 # MQTT Settings
 BROKER = "broker.hivemq.com"
 PORT = 1883
 TOPIC = "stampede/data"
 
-# Store data from nodes
+# Initialize algorithms
+zone_detector = ZoneDetector()
+cluster_detector = ClusterDetector()
+predictor = StampedePredictor(zone_detector, cluster_detector)
+
+# Node data storage
 nodes = {
-    "NODE_A": {"dist": 400, "pir": 0, "time": None},
-    "NODE_B": {"dist": 400, "pir": 0, "time": None},
-    "NODE_C": {"dist": 400, "pir": 0, "mic": 0, "time": None}
+    "NODE_A": {"dist": 400, "pir": 0, "mic": 0},
+    "NODE_B": {"dist": 400, "pir": 0, "mic": 0},
+    "NODE_C": {"dist": 400, "pir": 0, "mic": 0}
 }
 
-# Thresholds
-DIST_SAFE = 100       # cm - above this is safe
-DIST_WARNING = 50     # cm - below this is warning
-DIST_DANGER = 30      # cm - below this is danger
-MIC_LOUD = 400        # above this is loud
-MIC_SCREAM = 700      # above this is scream
+message_count = 0
 
-def calculate_density(distance):
-    """Convert distance to density level"""
-    if distance > DIST_SAFE:
-        return "LOW"
-    elif distance > DIST_WARNING:
-        return "MEDIUM"
-    elif distance > DIST_DANGER:
-        return "HIGH"
-    else:
-        return "CRITICAL"
 
-def calculate_risk():
-    """Calculate overall risk from all nodes"""
-    risk_score = 0
+def print_dashboard():
+    """Print the full dashboard"""
     
-    # Distance risk (0-40 points per node)
-    for node_id, data in nodes.items():
-        dist = data["dist"]
-        if dist < DIST_DANGER:
-            risk_score += 40
-        elif dist < DIST_WARNING:
-            risk_score += 25
-        elif dist < DIST_SAFE:
-            risk_score += 10
-    
-    # PIR risk (0-10 points per node)
-    motion_count = sum(1 for n in nodes.values() if n["pir"] == 1)
-    risk_score += motion_count * 10
-    
-    # Mic risk (0-30 points)
+    # Get prediction
     mic = nodes["NODE_C"].get("mic", 0)
-    if mic > MIC_SCREAM:
-        risk_score += 30
-    elif mic > MIC_LOUD:
-        risk_score += 15
+    result = predictor.predict(mic)
     
-    return min(100, risk_score)
-
-def get_risk_level(score):
-    """Convert score to level"""
-    if score >= 80:
-        return "🚨 CRITICAL"
-    elif score >= 60:
-        return "🔴 HIGH"
-    elif score >= 40:
-        return "🟠 MEDIUM"
-    elif score >= 20:
-        return "🟡 LOW"
-    else:
-        return "🟢 SAFE"
-
-def print_status():
-    """Print dashboard"""
-    risk = calculate_risk()
-    level = get_risk_level(risk)
+    # Level emoji
+    level_emoji = {
+        "SAFE": "🟢",
+        "LOW": "🟡", 
+        "MODERATE": "🟠",
+        "HIGH": "🔴",
+        "CRITICAL": "🚨"
+    }
     
     print()
-    print("=" * 60)
-    print(f"  RISK LEVEL: {level} ({risk}%)")
-    print("=" * 60)
-    print()
-    print("  NODE      DISTANCE    DENSITY     MOTION")
-    print("  ----      --------    -------     ------")
+    print("=" * 65)
+    print("           🚨 STAMPEDE PREVENTION SYSTEM 🚨")
+    print("=" * 65)
     
-    for node_id in ["NODE_A", "NODE_B", "NODE_C"]:
-        data = nodes[node_id]
-        dist = data["dist"]
-        density = calculate_density(dist)
-        motion = "YES" if data["pir"] == 1 else "No"
-        
-        print(f"  {node_id}    {dist:6.1f} cm    {density:8}    {motion}")
+    # Risk display
+    emoji = level_emoji.get(result["level"], "⚪")
+    print(f"\n  RISK: {emoji} {result['level']} ({result['risk']}%)")
     
-    # Mic status
+    if result["time_to_danger"] is not None:
+        print(f"  ⏱️  Time to critical: {result['time_to_danger']} seconds")
+    
+    # Zones
+    print("\n  " + "-" * 61)
+    print("  ZONES:")
+    print("  " + "-" * 61)
+    
+    zones = zone_detector.get_all_zones()
+    zone_emoji = {"GREEN": "🟢", "YELLOW": "🟡", "ORANGE": "🟠", "RED": "🔴", "BLACK": "⚫"}
+    
+    node_map = {"ENTRY": "NODE_A", "CENTER": "NODE_C", "EXIT": "NODE_B"}
+    
+    for name in ["ENTRY", "CENTER", "EXIT"]:
+        z = zones[name]
+        node = nodes[node_map[name]]
+        e = zone_emoji.get(z["status"], "⚪")
+        print(f"  {e} {name:7} | Dist: {node['dist']:5.1f}cm | Density: {z['density']:.1f}/m² | Risk: {z['risk']}%")
+    
+    # Clusters
+    clusters = cluster_detector.clusters
+    if clusters:
+        print("\n  " + "-" * 61)
+        print("  CLUSTERS:")
+        print("  " + "-" * 61)
+        for c in clusters:
+            print(f"  📍 {c['zone']}: {c['severity']} - ~{c['people']} people")
+    
+    # Audio
+    print("\n  " + "-" * 61)
+    print("  AUDIO:")
+    print("  " + "-" * 61)
+    
     mic = nodes["NODE_C"].get("mic", 0)
-    mic_status = "🔊 SCREAM!" if mic > MIC_SCREAM else ("🔊 LOUD" if mic > MIC_LOUD else "Normal")
-    print()
-    print(f"  Audio Level: {mic} ({mic_status})")
-    print()
+    if mic > 700:
+        print(f"  🔊 Level: {mic} (SCREAM DETECTED!)")
+    elif mic > 400:
+        print(f"  🔊 Level: {mic} (LOUD)")
+    else:
+        print(f"  🎤 Level: {mic} (Normal)")
     
-    # Warnings
-    if risk >= 60:
-        print("  ⚠️  WARNING: High crowd density detected!")
-    if mic > MIC_SCREAM:
-        print("  ⚠️  WARNING: Possible panic/screaming!")
+    # Factors
+    print("\n  " + "-" * 61)
+    print("  RISK FACTORS:")
+    print("  " + "-" * 61)
+    for factor in result["factors"]:
+        print(f"  {factor}")
     
-    print("=" * 60)
+    # Recommendation
+    print("\n  " + "-" * 61)
+    print(f"  {result['recommendation']}")
+    print("=" * 65)
+
 
 def on_connect(client, userdata, flags, rc):
-    print("✅ Connected to MQTT Broker")
-    print("📡 Waiting for data...")
     print()
+    print("=" * 65)
+    print("  ✅ Connected to MQTT Broker")
+    print("  📡 Waiting for sensor data...")
+    print("=" * 65)
     client.subscribe(TOPIC)
 
-message_count = 0
 
 def on_message(client, userdata, msg):
     global message_count
     
     try:
-        payload = msg.payload.decode()
-        data = json.loads(payload)
-        
+        data = json.loads(msg.payload.decode())
         node_id = data.get("id", "UNKNOWN")
         
-        if node_id in nodes:
-            nodes[node_id]["dist"] = data.get("dist", 400)
-            nodes[node_id]["pir"] = data.get("pir", 0)
-            nodes[node_id]["time"] = datetime.now()
-            
-            if "mic" in data:
-                nodes[node_id]["mic"] = data["mic"]
+        if node_id not in nodes:
+            return
+        
+        # Update node data
+        nodes[node_id]["dist"] = data.get("dist", 400)
+        nodes[node_id]["pir"] = data.get("pir", 0)
+        if "mic" in data:
+            nodes[node_id]["mic"] = data["mic"]
+        
+        # Update zone detector
+        zone_detector.update(
+            node_id,
+            data.get("dist", 400),
+            data.get("pir", 0),
+            data.get("mic", None)
+        )
+        
+        # Update cluster detector
+        node_data = {
+            "NODE_A": {"dist": nodes["NODE_A"]["dist"], "pir": nodes["NODE_A"]["pir"]},
+            "NODE_B": {"dist": nodes["NODE_B"]["dist"], "pir": nodes["NODE_B"]["pir"]},
+            "NODE_C": {"dist": nodes["NODE_C"]["dist"], "pir": nodes["NODE_C"]["pir"]}
+        }
+        cluster_detector.update(node_data)
         
         message_count += 1
         
-        # Print full status every 5 messages
-        if message_count % 5 == 0:
-            print_status()
+        # Dashboard every 8 messages
+        if message_count % 8 == 0:
+            print_dashboard()
         else:
-            # Print simple line
+            # Simple line
             dist = data.get("dist", 0)
-            pir = "MOTION" if data.get("pir", 0) == 1 else "Clear"
-            mic = data.get("mic", None)
-            
-            line = f"[{node_id}] D:{dist:5.1f}cm | {pir}"
-            if mic is not None:
-                line += f" | Mic:{mic}"
-            print(line)
-        
+            pir = "MOV" if data.get("pir", 0) else "---"
+            mic_str = f" | Mic:{data['mic']}" if "mic" in data else ""
+            print(f"  [{node_id}] D:{dist:5.1f}cm | {pir}{mic_str}")
+    
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"  Error: {e}")
+
 
 def main():
     print()
-    print("=" * 60)
-    print("       STAMPEDE PREVENTION SYSTEM")
-    print("       Coordinator with Risk Analysis")
-    print("=" * 60)
-    print()
+    print("=" * 65)
+    print("         🚨 STAMPEDE PREVENTION SYSTEM 🚨")
+    print("              Algorithm Edition v1.0")
+    print("=" * 65)
     
     client = mqtt.Client()
     client.on_connect = on_connect
     client.on_message = on_message
     
     try:
+        print("\n  Connecting to broker...")
         client.connect(BROKER, PORT, 60)
         client.loop_forever()
     except KeyboardInterrupt:
-        print("\n🛑 Stopped")
+        print("\n  🛑 System stopped")
+    except Exception as e:
+        print(f"\n  ❌ Error: {e}")
+
 
 if __name__ == "__main__":
     main()

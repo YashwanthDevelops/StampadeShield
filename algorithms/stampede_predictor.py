@@ -1,7 +1,6 @@
 """
 STAMPEDE PREDICTOR
-Main algorithm that combines all data to predict risk
-THIS IS THE CORE OF YOUR PROJECT
+With Crowd Pressure Index (CPI) - Our Unique Metric
 """
 
 from datetime import datetime
@@ -14,21 +13,104 @@ class StampedePredictor:
         self.cluster = cluster_detector
         
         self.risk_history = deque(maxlen=120)
+        self.cpi_history = deque(maxlen=60)
+        
         self.current_risk = 0
+        self.current_cpi = 0
         self.risk_level = "SAFE"
         self.time_to_danger = None
     
+    def calculate_cpi(self, mic_level=0):
+        """
+        CROWD PRESSURE INDEX (CPI)
+        Our unique metric combining all factors
+        
+        Formula:
+        CPI = (Density × 0.35) + (Motion × 0.25) + (Audio × 0.20) + (Trend × 0.20)
+        """
+        
+        # Component 1: Density Score (0-100)
+        zones = self.zone.get_all_zones()
+        densities = [z["density"] for z in zones.values()]
+        max_density = max(densities)
+        density_score = min(100, (max_density / 8) * 100)
+        
+        # Component 2: Motion Score (0-100)
+        motion_risks = [z["risk"] for z in zones.values()]
+        motion_score = sum(motion_risks) / 3
+        
+        # Component 3: Audio Score (0-100)
+        if mic_level > 800:
+            audio_score = 100
+        elif mic_level > 600:
+            audio_score = 75
+        elif mic_level > 400:
+            audio_score = 50
+        elif mic_level > 200:
+            audio_score = 25
+        else:
+            audio_score = 0
+        
+        # Component 4: Trend Score (0-100)
+        trend_score = self.calculate_trend()
+        
+        # Calculate CPI
+        cpi = (
+            density_score * 0.35 +
+            motion_score * 0.25 +
+            audio_score * 0.20 +
+            trend_score * 0.20
+        )
+        
+        self.current_cpi = round(min(100, cpi), 1)
+        
+        # Store history
+        self.cpi_history.append({
+            "time": datetime.now(),
+            "cpi": self.current_cpi,
+            "density": density_score,
+            "motion": motion_score,
+            "audio": audio_score,
+            "trend": trend_score
+        })
+        
+        return self.current_cpi
+    
+    def calculate_trend(self):
+        """Calculate if situation is getting worse"""
+        if len(self.risk_history) < 10:
+            return 0
+        
+        recent = [r["risk"] for r in list(self.risk_history)[-5:]]
+        older = [r["risk"] for r in list(self.risk_history)[-10:-5]]
+        
+        recent_avg = sum(recent) / 5
+        older_avg = sum(older) / 5
+        
+        increase = recent_avg - older_avg
+        
+        if increase > 20:
+            return 100
+        elif increase > 10:
+            return 60
+        elif increase > 5:
+            return 30
+        elif increase > 0:
+            return 10
+        else:
+            return 0
+    
     def predict(self, mic_level=0):
-        """
-        Main prediction function
-        Call this after updating zone and cluster detectors
-        """
+        """Main prediction function"""
+        
+        # Calculate CPI first
+        cpi = self.calculate_cpi(mic_level)
         
         # Get component risks
         zone_risk = self.calculate_zone_risk()
         cluster_risk = self.cluster.get_cluster_risk()
         audio_risk = self.calculate_audio_risk(mic_level)
-        trend_risk = self.calculate_trend_risk()
+        trend_risk = self.calculate_trend()
         
         # Weighted combination
         total_risk = (
@@ -85,30 +167,6 @@ class StampedePredictor:
         else:
             return 0
     
-    def calculate_trend_risk(self):
-        """Risk from worsening trend"""
-        if len(self.risk_history) < 10:
-            return 0
-        
-        recent = [r["risk"] for r in list(self.risk_history)[-5:]]
-        older = [r["risk"] for r in list(self.risk_history)[-10:-5]]
-        
-        recent_avg = sum(recent) / 5
-        older_avg = sum(older) / 5
-        
-        increase = recent_avg - older_avg
-        
-        if increase > 20:
-            return 100
-        elif increase > 10:
-            return 60
-        elif increase > 5:
-            return 30
-        elif increase > 0:
-            return 10
-        else:
-            return 0
-    
     def get_level(self, risk):
         """Convert risk score to level"""
         if risk >= 80:
@@ -150,7 +208,6 @@ class StampedePredictor:
         """Get list of risk factors"""
         factors = []
         
-        # Zone factors
         zones = self.zone.get_all_zones()
         for name, z in zones.items():
             if z["status"] == "BLACK":
@@ -160,7 +217,6 @@ class StampedePredictor:
             elif z["status"] == "ORANGE":
                 factors.append(f"🟠 {name} zone elevated")
         
-        # Cluster factors
         worst = self.cluster.get_worst_cluster()
         if worst:
             factors.append(f"📍 {worst['severity']} cluster at {worst['zone']}")
@@ -169,12 +225,11 @@ class StampedePredictor:
         if total_people > 10:
             factors.append(f"👥 ~{total_people} people in clusters")
         
-        # Trend factor
-        if len(self.risk_history) >= 10:
-            recent = [r["risk"] for r in list(self.risk_history)[-5:]]
-            older = [r["risk"] for r in list(self.risk_history)[-10:-5]]
-            if sum(recent)/5 > sum(older)/5 + 10:
-                factors.append("📈 Risk increasing rapidly")
+        if len(self.cpi_history) >= 2:
+            current = self.cpi_history[-1]["cpi"]
+            previous = self.cpi_history[-2]["cpi"]
+            if current > previous + 5:
+                factors.append("📈 CPI increasing rapidly")
         
         if not factors:
             factors.append("✅ No major risk factors")
@@ -194,11 +249,27 @@ class StampedePredictor:
         else:
             return "✅ Normal. Continue monitoring."
     
+    def get_cpi_breakdown(self):
+        """Get CPI component breakdown"""
+        if not self.cpi_history:
+            return None
+        
+        latest = self.cpi_history[-1]
+        return {
+            "cpi": latest["cpi"],
+            "density": round(latest["density"], 1),
+            "motion": round(latest["motion"], 1),
+            "audio": round(latest["audio"], 1),
+            "trend": round(latest["trend"], 1)
+        }
+    
     def get_result(self):
         """Get complete prediction result"""
         return {
             "risk": self.current_risk,
             "level": self.risk_level,
+            "cpi": self.current_cpi,
+            "cpi_breakdown": self.get_cpi_breakdown(),
             "time_to_danger": self.time_to_danger,
             "factors": self.get_factors(),
             "recommendation": self.get_recommendation()

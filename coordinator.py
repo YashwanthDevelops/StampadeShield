@@ -1,7 +1,12 @@
-"""
-STAMPEDE PREVENTION SYSTEM
-Full Coordinator with Algorithms
-"""
+from telegram_alert import TelegramAlert
+
+# Telegram Configuration
+# ⚠️ REPLACE WITH YOUR VALUES!
+TELEGRAM_TOKEN = "8549587786:AAGsxckHjHuV08SFK24SjwSYfaEC7ypJ8CQ"
+TELEGRAM_CHAT_ID = "6955686604"
+
+# Initialize Telegram
+telegram = TelegramAlert(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
 
 import paho.mqtt.client as mqtt
 import json
@@ -61,8 +66,19 @@ def print_dashboard():
     emoji = level_emoji.get(result["level"], "⚪")
     print(f"\n  RISK: {emoji} {result['level']} ({result['risk']}%)")
     
+    # CPI Display (NEW!)
+    print(f"  CROWD PRESSURE INDEX (CPI): {result['cpi']}")
+    
+    # CPI Breakdown (NEW!)
+    breakdown = result.get("cpi_breakdown")
+    if breakdown:
+        print(f"    ├─ Density:  {breakdown['density']:5.1f}%")
+        print(f"    ├─ Motion:   {breakdown['motion']:5.1f}%")
+        print(f"    ├─ Audio:    {breakdown['audio']:5.1f}%")
+        print(f"    └─ Trend:    {breakdown['trend']:5.1f}%")
+    
     if result["time_to_danger"] is not None:
-        print(f"  ⏱️  Time to critical: {result['time_to_danger']} seconds")
+        print(f"\n  ⏱️  Time to critical: {result['time_to_danger']} seconds")
     
     # Zones
     print("\n  " + "-" * 61)
@@ -113,6 +129,16 @@ def print_dashboard():
     print("\n  " + "-" * 61)
     print(f"  {result['recommendation']}")
     print("=" * 65)
+
+        # Send Telegram alert if HIGH or CRITICAL
+    if result["level"] in ["HIGH", "CRITICAL"]:
+        telegram.send_alert(
+            result["level"],
+            result["risk"],
+            result["cpi"],
+            result["recommendation"],
+            result["factors"]
+        )
 
 
 def on_connect(client, userdata, flags, rc):

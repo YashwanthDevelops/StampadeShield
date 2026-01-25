@@ -1,0 +1,754 @@
+/* ========================================
+   STAMPEDE SHIELD - Dashboard Styles
+   ======================================== */
+
+/* CSS Variables - Dark Theme (Default) */
+:root {
+    --bg-primary: #0f0f14;
+    --bg-secondary: #1a1a24;
+    --bg-card: #1e1e2a;
+    --bg-card-hover: #252535;
+    
+    --text-primary: #f5f5f7;
+    --text-secondary: #a0a0b0;
+    --text-muted: #6b6b7b;
+    
+    --border-color: #2a2a3a;
+    --border-light: #3a3a4a;
+    
+    --status-safe: #22c55e;
+    --status-low: #eab308;
+    --status-moderate: #f97316;
+    --status-high: #ef4444;
+    --status-critical: #dc2626;
+    
+    --accent: #6366f1;
+    --accent-glow: rgba(99, 102, 241, 0.3);
+    
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+    
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.3s ease;
+}
+
+/* Light Theme */
+body.light {
+    --bg-primary: #f5f5f7;
+    --bg-secondary: #e8e8ec;
+    --bg-card: #ffffff;
+    --bg-card-hover: #f0f0f5;
+    
+    --text-primary: #1a1a2e;
+    --text-secondary: #4a4a5a;
+    --text-muted: #8a8a9a;
+    
+    --border-color: #d0d0d8;
+    --border-light: #e0e0e8;
+    
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* ========================================
+   BASE STYLES
+   ======================================== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* ========================================
+   HEADER
+   ======================================== */
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 24px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header-left .logo {
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.header-center {
+    display: flex;
+    align-items: center;
+}
+
+.live-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--status-safe);
+    background: rgba(34, 197, 94, 0.15);
+    padding: 6px 14px;
+    border-radius: 20px;
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--status-safe);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.2); }
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.timestamp {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.theme-toggle,
+.fullscreen-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: var(--transition-fast);
+}
+
+.theme-toggle:hover,
+.fullscreen-btn:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-light);
+}
+
+/* ========================================
+   MAIN LAYOUT
+   ======================================== */
+
+.main-container {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 20px;
+    padding: 20px;
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+.left-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.right-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* ========================================
+   CARDS
+   ======================================== */
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    transition: var(--transition-normal);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.card-header {
+    padding: 12px 16px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+}
+
+.card-body {
+    padding: 16px;
+}
+
+/* ========================================
+   RISK CARD
+   ======================================== */
+
+.risk-card .card-body {
+    text-align: center;
+}
+
+.risk-emoji {
+    font-size: 3rem;
+    margin-bottom: 8px;
+}
+
+.risk-level {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.risk-score {
+    font-size: 2.5rem;
+    font-weight: 800;
+    margin-bottom: 16px;
+}
+
+.progress-bar {
+    height: 8px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--status-safe);
+    border-radius: 4px;
+    transition: width 0.5s ease, background 0.3s ease;
+}
+
+.confidence-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.mini-progress {
+    flex: 1;
+    height: 4px;
+    background: var(--bg-secondary);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.mini-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 0.5s ease;
+}
+
+/* Risk Card States */
+.risk-card.safe { border-color: var(--status-safe); }
+.risk-card.low { border-color: var(--status-low); }
+.risk-card.moderate { border-color: var(--status-moderate); }
+.risk-card.high { 
+    border-color: var(--status-high);
+    animation: borderPulseOrange 1.2s ease-in-out infinite;
+}
+.risk-card.critical { 
+    border-color: var(--status-critical);
+    animation: borderPulseRed 0.5s ease-in-out infinite;
+}
+
+@keyframes borderPulseOrange {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(249, 115, 22, 0); }
+}
+
+@keyframes borderPulseRed {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
+    50% { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
+}
+
+/* ========================================
+   CPI CARD
+   ======================================== */
+
+.cpi-value {
+    font-size: 3rem;
+    font-weight: 800;
+    text-align: center;
+    margin-bottom: 12px;
+    color: var(--accent);
+}
+
+.cpi-breakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.cpi-item {
+    display: grid;
+    grid-template-columns: 70px 1fr 45px;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.85rem;
+}
+
+.cpi-item span:first-child {
+    color: var(--text-secondary);
+}
+
+.cpi-bar {
+    height: 6px;
+    background: var(--bg-secondary);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.cpi-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+/* ========================================
+   TIME CARD
+   ======================================== */
+
+.time-card .card-body {
+    text-align: center;
+}
+
+.time-value {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.time-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* ========================================
+   NODE STATUS CARD
+   ======================================== */
+
+.node-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.9rem;
+}
+
+.node-item:last-child {
+    border-bottom: none;
+}
+
+.node-indicator {
+    font-size: 0.8rem;
+}
+
+/* ========================================
+   CORRIDOR HEATMAP
+   ======================================== */
+
+.corridor {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 20px 10px;
+}
+
+.zone {
+    flex: 1;
+    max-width: 160px;
+    padding: 20px 16px;
+    border-radius: var(--radius-md);
+    text-align: center;
+    border: 2px solid var(--border-color);
+    transition: var(--transition-normal);
+}
+
+.zone-label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+    letter-spacing: 0.5px;
+}
+
+.zone-distance {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.zone-density {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.flow-arrow {
+    font-size: 1.5rem;
+    color: var(--text-muted);
+}
+
+/* Zone States */
+.zone.safe {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: var(--status-safe);
+    color: var(--status-safe);
+}
+
+.zone.low {
+    background: rgba(234, 179, 8, 0.15);
+    border-color: var(--status-low);
+}
+
+.zone.moderate {
+    background: rgba(249, 115, 22, 0.15);
+    border-color: var(--status-moderate);
+}
+
+.zone.high {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: var(--status-high);
+}
+
+.zone.critical {
+    background: rgba(220, 38, 38, 0.2);
+    border-color: var(--status-critical);
+    animation: zonePulse 0.8s ease-in-out infinite;
+}
+
+@keyframes zonePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+}
+
+/* ========================================
+   TIMELINE
+   ======================================== */
+
+.timeline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 0;
+}
+
+.timeline-item {
+    text-align: center;
+}
+
+.timeline-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+.timeline-box {
+    padding: 10px 18px;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    transition: var(--transition-normal);
+}
+
+.timeline-arrow {
+    color: var(--text-muted);
+    font-size: 1.2rem;
+}
+
+.timeline-box.safe { background: var(--status-safe); color: white; }
+.timeline-box.low { background: var(--status-low); color: black; }
+.timeline-box.moderate { background: var(--status-moderate); color: white; }
+.timeline-box.high { background: var(--status-high); color: white; }
+.timeline-box.critical { background: var(--status-critical); color: white; }
+
+/* ========================================
+   AUDIO MONITOR
+   ======================================== */
+
+.audio-level {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+}
+
+.audio-state {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--status-safe);
+    color: white;
+}
+
+.audio-state.loud {
+    background: var(--status-moderate);
+}
+
+.audio-state.scream {
+    background: var(--status-critical);
+    animation: pulse 0.5s ease-in-out infinite;
+}
+
+.audio-bar {
+    height: 10px;
+    background: var(--bg-secondary);
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.audio-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--status-safe), var(--status-low), var(--status-moderate), var(--status-critical));
+    border-radius: 5px;
+    transition: width 0.3s ease;
+}
+
+.audio-thresholds {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+/* ========================================
+   ACTIONS CARD
+   ======================================== */
+
+.actions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.action-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--accent);
+}
+
+.action-priority {
+    font-size: 1.2rem;
+}
+
+.action-content {
+    flex: 1;
+}
+
+.action-text {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.action-reason {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* ========================================
+   FACTORS CARD
+   ======================================== */
+
+.factors-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.factors-list li {
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+}
+
+/* ========================================
+   ALERT BAR
+   ======================================== */
+
+.alert-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 14px 24px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    text-align: center;
+    font-size: 1rem;
+    font-weight: 600;
+    z-index: 100;
+    transition: var(--transition-normal);
+}
+
+.alert-bar.high {
+    background: var(--status-high);
+    color: white;
+    border-color: var(--status-high);
+}
+
+.alert-bar.critical {
+    background: var(--status-critical);
+    color: white;
+    border-color: var(--status-critical);
+    animation: alertFlash 1s ease-in-out infinite;
+}
+
+@keyframes alertFlash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+
+@media (max-width: 1024px) {
+    .main-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .left-panel {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+    
+    .risk-card {
+        grid-column: span 2;
+    }
+}
+
+@media (max-width: 768px) {
+    .header {
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 10px 16px;
+    }
+    
+    .header-center {
+        order: 3;
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .main-container {
+        padding: 12px;
+        gap: 12px;
+    }
+    
+    .left-panel {
+        grid-template-columns: 1fr;
+    }
+    
+    .risk-card {
+        grid-column: span 1;
+    }
+    
+    .corridor {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .flow-arrow {
+        transform: rotate(90deg);
+    }
+    
+    .zone {
+        max-width: 100%;
+        width: 100%;
+    }
+    
+    .timeline {
+        flex-wrap: wrap;
+    }
+    
+    .alert-bar {
+        padding: 12px 16px;
+        font-size: 0.9rem;
+    }
+}
+
+/* ========================================
+   FULLSCREEN MODE
+   ======================================== */
+
+body.fullscreen .header {
+    display: none;
+}
+
+body.fullscreen .main-container {
+    max-width: 100%;
+    padding: 10px;
+}
+
+body.fullscreen .alert-bar {
+    position: relative;
+}
+
+/* ========================================
+   EMERGENCY MODE
+   ======================================== */
+
+body.emergency * {
+    animation: none !important;
+    transition: none !important;
+}
+
+body.emergency .card:hover {
+    transform: none;
+    box-shadow: var(--shadow-sm);
+}

@@ -10,12 +10,18 @@ const CONFIG = {
     lastLevel: 'SAFE'
 };
 
+// Audio activity chart instance
+let audioChart = null;
+
 // DOM Elements
 const elements = {
     // Header
     timestamp: document.getElementById('timestamp'),
     themeToggle: document.getElementById('themeToggle'),
     fullscreenBtn: document.getElementById('fullscreenBtn'),
+    simModeSelect: document.getElementById('simModeSelect'),
+    liveIndicator: document.getElementById('liveIndicator'),
+    modeLabel: document.getElementById('modeLabel'),
 
     // Risk Card
     riskCard: document.getElementById('riskCard'),
@@ -81,6 +87,9 @@ const elements = {
     // Alert Bar
     alertBar: document.getElementById('alertBar'),
     recommendation: document.getElementById('recommendation'),
+
+    // Audio Graph
+    audioGraph: document.getElementById('audioGraph'),
 
     // Sound
     alertSound: document.getElementById('alertSound')
@@ -148,6 +157,46 @@ elements.fullscreenBtn.addEventListener('click', () => {
 });
 
 /* ========================================
+   SIMULATION MODE
+   ======================================== */
+
+const SIM_MODE_LABELS = {
+    'live': { label: 'LIVE', class: 'live' },
+    'normal': { label: 'SIM: NORMAL', class: 'sim-normal' },
+    'medium': { label: 'SIM: MEDIUM', class: 'sim-medium' },
+    'surge': { label: 'SIM: SURGE', class: 'sim-surge' }
+};
+
+elements.simModeSelect.addEventListener('change', async (e) => {
+    const mode = e.target.value;
+
+    try {
+        const response = await fetch('/api/simulation/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode })
+        });
+
+        if (response.ok) {
+            updateModeIndicator(mode);
+            console.log(`🎮 Simulation mode: ${mode}`);
+        }
+    } catch (error) {
+        console.error('Mode change error:', error);
+    }
+});
+
+function updateModeIndicator(mode) {
+    const config = SIM_MODE_LABELS[mode] || SIM_MODE_LABELS['live'];
+
+    // Update label text
+    elements.modeLabel.textContent = config.label;
+
+    // Update indicator styling
+    elements.liveIndicator.className = 'live-indicator ' + config.class;
+}
+
+/* ========================================
    DATA FETCHING
    ======================================== */
 
@@ -190,6 +239,9 @@ function updateDashboard(data) {
 
     // Update Audio
     updateAudio(data.audio);
+
+    // Update Audio Graph (new)
+    updateAudioGraph(data.audio);
 
     // Update Actions
     updateActions(data.actions);
@@ -410,6 +462,9 @@ function init() {
     // Initialize theme
     initTheme();
 
+    // Initialize audio chart
+    initAudioChart();
+
     // Fetch data immediately
     fetchData();
 
@@ -417,6 +472,130 @@ function init() {
     setInterval(fetchData, CONFIG.refreshRate);
 
     console.log('✅ Dashboard Ready');
+}
+
+/* ========================================
+   AUDIO ACTIVITY CHART
+   ======================================== */
+
+// Helper to get CSS variable value
+function getCSSVar(varName) {
+    return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+}
+
+function initAudioChart() {
+    const ctx = elements.audioGraph;
+    if (!ctx) return;
+
+    // Get colors from CSS variables
+    const primaryColor = getCSSVar('--chart-1') || getCSSVar('--primary');
+    const mutedColor = getCSSVar('--muted-foreground');
+
+    audioChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Combined Audio Level',
+                data: [],
+                borderColor: primaryColor,
+                backgroundColor: `color-mix(in oklch, ${primaryColor} 10%, transparent)`,
+                borderWidth: 2,
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+                duration: 300
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            scales: {
+                x: {
+                    display: true,
+                    title: {
+                        display: false
+                    },
+                    ticks: {
+                        color: mutedColor,
+                        maxTicksLimit: 6,
+                        maxRotation: 0
+                    },
+                    grid: {
+                        display: false
+                    }
+                },
+                y: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: 'Audio Level',
+                        color: mutedColor
+                    },
+                    min: 0,
+                    max: 1000,
+                    ticks: {
+                        color: mutedColor,
+                        stepSize: 200
+                    },
+                    grid: {
+                        color: `color-mix(in oklch, ${mutedColor} 20%, transparent)`
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: getCSSVar('--card'),
+                    titleColor: getCSSVar('--foreground'),
+                    bodyColor: getCSSVar('--foreground'),
+                    borderColor: getCSSVar('--border'),
+                    borderWidth: 1,
+                    padding: 10,
+                    cornerRadius: 6
+                }
+            }
+        }
+    });
+}
+
+function updateAudioGraph(audio) {
+    if (!audioChart || !audio.history) return;
+
+    // Extract labels (time) and data (level) from history
+    const labels = audio.history.map(h => h.time);
+    const data = audio.history.map(h => h.level);
+
+    // Update chart data smoothly
+    audioChart.data.labels = labels;
+    audioChart.data.datasets[0].data = data;
+
+    // Change line color based on current audio state
+    const statusCritical = getCSSVar('--status-critical') || getCSSVar('--destructive');
+    const statusModerate = getCSSVar('--status-moderate') || getCSSVar('--chart-2');
+    const primaryColor = getCSSVar('--chart-1') || getCSSVar('--primary');
+
+    if (audio.state === 'SCREAM') {
+        audioChart.data.datasets[0].borderColor = statusCritical;
+        audioChart.data.datasets[0].backgroundColor = `color-mix(in oklch, ${statusCritical} 20%, transparent)`;
+    } else if (audio.state === 'LOUD') {
+        audioChart.data.datasets[0].borderColor = statusModerate;
+        audioChart.data.datasets[0].backgroundColor = `color-mix(in oklch, ${statusModerate} 20%, transparent)`;
+    } else {
+        audioChart.data.datasets[0].borderColor = primaryColor;
+        audioChart.data.datasets[0].backgroundColor = `color-mix(in oklch, ${primaryColor} 10%, transparent)`;
+    }
+
+    audioChart.update('none'); // 'none' disables animation for smooth updates
 }
 
 // Start when DOM is loaded

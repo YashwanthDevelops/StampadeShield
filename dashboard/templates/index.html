@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stampede Shield - Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
@@ -16,10 +17,17 @@
             <span class="logo">🚨 STAMPEDE SHIELD</span>
         </div>
         <div class="header-center">
-            <span class="live-indicator">
+            <span class="live-indicator" id="liveIndicator">
                 <span class="live-dot"></span>
-                LIVE
+                <span id="modeLabel">LIVE</span>
             </span>
+            <!-- Simulation Mode Selector -->
+            <select id="simModeSelect" class="sim-mode-select" title="Data Source">
+                <option value="live">🟢 Live Data</option>
+                <option value="normal">🔵 Sim: Normal</option>
+                <option value="medium">🟡 Sim: Medium</option>
+                <option value="surge">🔴 Sim: Surge</option>
+            </select>
         </div>
         <div class="header-right">
             <button class="calibrate-btn" onclick="calibrateSystem()">⚙️ Calibrate</button>
@@ -205,6 +213,16 @@
                         <span>Normal</span>
                         <span>Loud</span>
                         <span>Scream</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AUDIO ACTIVITY GRAPH -->
+            <div class="card audio-graph-card">
+                <div class="card-header">📊 AUDIO ACTIVITY (Last 2 Minutes)</div>
+                <div class="card-body">
+                    <div class="audio-graph-container">
+                        <canvas id="audioGraph"></canvas>
                     </div>
                 </div>
             </div>

@@ -3,7 +3,7 @@ STAMPEDE SHIELD - Web Dashboard
 Flask Server
 """
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 import paho.mqtt.client as mqtt
 import json
 import threading
@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'algorithms'))
 from zone_detector import ZoneDetector
 from cluster_detector import ClusterDetector
 from stampede_predictor import StampedePredictor
+from simulator import simulator  # Simulation mode support
 
 app = Flask(__name__)
 
@@ -51,6 +52,30 @@ nodes = {
 
 # Risk history for prediction
 risk_history = deque(maxlen=30)
+
+# Audio history for graph (2 min at 2-sec intervals = 60 points)
+audio_history = deque(maxlen=60)
+
+def get_combined_audio():
+    """
+    MAX aggregation of online nodes' audio levels.
+    
+    Rationale: In safety-critical monitoring, we must not mask dangerous signals.
+    A scream at one node should trigger full alert, not be diluted by quiet nodes.
+    MAX ensures the loudest signal is always visible.
+    """
+    levels = []
+    for node_id, node in nodes.items():
+        if node["online"]:
+            levels.append(node.get("mic", 0))
+    return max(levels) if levels else 0
+
+# ========================================
+# SIMULATION MODE
+# ========================================
+# Modes: "live", "normal", "medium", "surge"
+simulation_mode = "live"
+simulation_lock = threading.Lock()
 
 # MQTT Settings
 BROKER = "broker.hivemq.com"
@@ -290,12 +315,145 @@ def calibrate():
         print(f"Calibration error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# ========================================
+# SIMULATION MODE API
+# ========================================
+
+def reset_live_state():
+    """
+    Reset all state to initial values when switching back to live mode.
+    This ensures data from simulation doesn't persist into live mode.
+    """
+    global nodes, risk_history, audio_history
+    
+    # Reset node data to defaults
+    for node_id in nodes:
+        nodes[node_id] = {
+            "dist": 400,
+            "pir": 0,
+            "mic": 0,
+            "online": False,
+            "last_seen": None,
+            "uptime": 0,
+            "last_heartbeat": None
+        }
+    
+    # Clear histories
+    risk_history.clear()
+    audio_history.clear()
+    
+    # Reset zone detector - reinitialize zones to default state
+    zone_detector.zones = {
+        "ENTRY": {
+            "node": "NODE_A",
+            "status": "GREEN",
+            "density": 0,
+            "risk": 0,
+            "detection_type": "UNKNOWN",
+            "history": deque(maxlen=60)
+        },
+        "CENTER": {
+            "node": "NODE_C",
+            "status": "GREEN",
+            "density": 0,
+            "risk": 0,
+            "detection_type": "UNKNOWN",
+            "history": deque(maxlen=60)
+        },
+        "EXIT": {
+            "node": "NODE_B",
+            "status": "GREEN",
+            "density": 0,
+            "risk": 0,
+            "detection_type": "UNKNOWN",
+            "history": deque(maxlen=60)
+        }
+    }
+    
+    # Reset cluster detector
+    cluster_detector.clusters = []
+    
+    # Reset predictor
+    predictor.current_risk = 0
+    predictor.risk_level = "SAFE"
+    predictor.risk_history.clear()
+    predictor.trend = 0
+    
+    print("🔄 Live state reset - all values cleared to zero")
+
+
+@app.route('/api/simulation/mode', methods=['GET', 'POST'])
+def simulation_mode_api():
+    """Get or set simulation mode"""
+    global simulation_mode
+    
+    if request.method == 'POST':
+        data = request.get_json()
+        new_mode = data.get('mode', 'live')
+        if new_mode in ['live', 'normal', 'medium', 'surge']:
+            with simulation_lock:
+                simulation_mode = new_mode
+            # Reset simulator for fresh start on mode change
+            if new_mode != 'live':
+                simulator.reset()
+            else:
+                # Reset all state when switching back to LIVE mode
+                reset_live_state()
+            print(f"🎮 Simulation mode changed to: {new_mode}")
+            return jsonify({"status": "success", "mode": new_mode})
+        return jsonify({"status": "error", "message": "Invalid mode"}), 400
+    
+    # GET request
+    with simulation_lock:
+        current_mode = simulation_mode
+    return jsonify({"mode": current_mode})
+
 @app.route('/api/data')
 def get_data():
-    """API endpoint for live data"""
+    """API endpoint for live or simulated data"""
+    global simulation_mode
     
-    mic = nodes["NODE_C"].get("mic", 0)
-    result = predictor.predict(mic)
+    # Check if simulation is active
+    with simulation_lock:
+        current_mode = simulation_mode
+    
+    # SIMULATION: Inject simulated data into node state
+    if current_mode != 'live':
+        sim_data = simulator.generate_all_nodes(current_mode)
+        for node_id, data in sim_data.items():
+            nodes[node_id]["dist"] = data["dist"]
+            nodes[node_id]["pir"] = data["pir"]
+            nodes[node_id]["mic"] = data["mic"]
+            nodes[node_id]["online"] = True  # Simulated nodes are always online
+            nodes[node_id]["last_seen"] = datetime.now()
+            
+            # Update zone detector with simulated data
+            # zone_detector.update() expects full node_id (e.g., "NODE_A")
+            zone_detector.update(
+                node_id,  # Full node_id: NODE_A, NODE_B, NODE_C
+                data["dist"],
+                data["pir"],
+                data["mic"]
+            )
+        
+        # Update cluster detector
+        node_data = {
+            "NODE_A": {"dist": nodes["NODE_A"]["dist"], "pir": nodes["NODE_A"]["pir"]},
+            "NODE_B": {"dist": nodes["NODE_B"]["dist"], "pir": nodes["NODE_B"]["pir"]},
+            "NODE_C": {"dist": nodes["NODE_C"]["dist"], "pir": nodes["NODE_C"]["pir"]}
+        }
+        cluster_detector.update(node_data)
+    
+    # Get combined audio from all online nodes (MAX aggregation)
+    combined_audio = get_combined_audio()
+    
+    # Store in history for graph (with timestamp)
+    audio_history.append({
+        "time": datetime.now().strftime("%H:%M:%S"),
+        "level": combined_audio
+    })
+    
+    result = predictor.predict(combined_audio)
     zones = zone_detector.get_all_zones()
     
     # Check node online status
@@ -342,8 +500,9 @@ def get_data():
             }
         },
         "audio": {
-            "level": mic,
-            "state": "SCREAM" if mic > 700 else ("LOUD" if mic > 400 else "NORMAL")
+            "level": combined_audio,
+            "state": "SCREAM" if combined_audio > 700 else ("LOUD" if combined_audio > 400 else "NORMAL"),
+            "history": list(audio_history)
         },
         "timeline": predict_timeline(),
         "time_to_critical": result.get("time_to_danger"),

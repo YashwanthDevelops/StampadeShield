@@ -27,11 +27,26 @@ zone_detector = ZoneDetector()
 cluster_detector = ClusterDetector()
 predictor = StampedePredictor(zone_detector, cluster_detector)
 
+CALIBRATION_FILE = 'calibration.json'
+
+def load_calibration():
+    try:
+        if os.path.exists(CALIBRATION_FILE):
+            with open(CALIBRATION_FILE, 'r') as f:
+                data = json.load(f)
+                for zone, dist in data.items():
+                    zone_detector.set_baseline(zone, dist)
+            print("Reverted to saved calibration")
+    except Exception as e:
+        print(f"Calibration load error: {e}")
+
+load_calibration()
+
 # Store node data
 nodes = {
-    "NODE_A": {"dist": 400, "pir": 0, "mic": 0, "online": False, "last_seen": None},
-    "NODE_B": {"dist": 400, "pir": 0, "mic": 0, "online": False, "last_seen": None},
-    "NODE_C": {"dist": 400, "pir": 0, "mic": 0, "online": False, "last_seen": None}
+    "NODE_A": {"dist": 400, "pir": 0, "mic": 0, "online": False, "last_seen": None, "uptime": 0, "last_heartbeat": None},
+    "NODE_B": {"dist": 400, "pir": 0, "mic": 0, "online": False, "last_seen": None, "uptime": 0, "last_heartbeat": None},
+    "NODE_C": {"dist": 400, "pir": 0, "mic": 0, "online": False, "last_seen": None, "uptime": 0, "last_heartbeat": None}
 }
 
 # Risk history for prediction
@@ -40,6 +55,11 @@ risk_history = deque(maxlen=30)
 # MQTT Settings
 BROKER = "broker.hivemq.com"
 TOPIC = "stampede/data"
+COMMAND_TOPIC = "stampede/commands"
+
+# Global MQTT client for publishing commands
+mqtt_client = None
+mqtt_client_lock = threading.Lock()
 
 def calculate_confidence():
     """Calculate system confidence based on node availability and data quality"""
@@ -145,14 +165,25 @@ def get_recommended_actions():
     
     return sorted(actions, key=lambda x: x["priority"])
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, rc, properties):
     print(f"Dashboard connected to MQTT (rc={rc})")
     client.subscribe(TOPIC)
+    client.subscribe("stampede/health")  # Subscribe to health heartbeats
 
 def on_message(client, userdata, msg):
     try:
-        print(f"RAW MSG: {msg.payload.decode()}") 
         data = json.loads(msg.payload.decode())
+        
+        # Handle heartbeat messages
+        if msg.topic == "stampede/health":
+            node_id = data.get("id", "UNKNOWN")
+            if node_id in nodes:
+                nodes[node_id]["uptime"] = data.get("uptime", 0)
+                nodes[node_id]["last_heartbeat"] = datetime.now()
+                print(f"💓 Heartbeat from {node_id} (uptime: {data.get('uptime', 0)}s)")
+            return
+        
+        # Handle sensor data messages
         node_id = data.get("id", "UNKNOWN")
         
         if node_id in nodes:
@@ -184,6 +215,11 @@ def on_message(client, userdata, msg):
             mic = nodes["NODE_C"].get("mic", 0)
             predictor.predict(mic)
             
+            # Publish alert level to Node C LEDs
+            with mqtt_client_lock:
+                if mqtt_client and mqtt_client.is_connected():
+                    mqtt_client.publish(COMMAND_TOPIC, predictor.risk_level)
+            
             # Store risk history
             risk_history.append(predictor.current_risk)
             
@@ -192,11 +228,26 @@ def on_message(client, userdata, msg):
 
 # Start MQTT in background
 def start_mqtt():
-    client = mqtt.Client()
+    global mqtt_client
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     client.on_connect = on_connect
     client.on_message = on_message
-    client.connect(BROKER, 1883, 60)
-    client.loop_forever()
+    
+    while True:
+        try:
+            client.connect(BROKER, 1883, 60)
+            with mqtt_client_lock:
+                mqtt_client = client 
+            break
+        except Exception as e:
+            print(f"MQTT Connection Failed: {e}. Retrying in 5s...")
+            import time
+            time.sleep(5)
+            
+    try:
+        client.loop_forever()
+    except Exception as e:
+        print(f"MQTT Loop Error: {e}")
 
 mqtt_thread = threading.Thread(target=start_mqtt, daemon=True)
 mqtt_thread.start()
@@ -204,6 +255,40 @@ mqtt_thread.start()
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/api/calibrate', methods=['POST'])
+def calibrate():
+    """
+    Saves current distances as the 'empty room' baseline.
+    In a real scenario, this would save to a file/database.
+    For now, we update the zone detector thresholds.
+    """
+    try:
+        # Get current distances
+        dist_a = nodes["NODE_A"]["dist"]
+        dist_b = nodes["NODE_B"]["dist"]
+        dist_c = nodes["NODE_C"]["dist"]
+        
+        # Update zone detector thresholds dynamically
+        zone_detector.set_baseline("ENTRY", dist_a)
+        zone_detector.set_baseline("EXIT", dist_b)
+        zone_detector.set_baseline("CENTER", dist_c)
+        
+        print(f"CALIBRATION: Baseline set to A:{dist_a}, B:{dist_b}, C:{dist_c}")
+        
+        # Save to file for persistence
+        new_baselines = {
+            "ENTRY": dist_a,
+            "EXIT": dist_b,
+            "CENTER": dist_c
+        }
+        with open(CALIBRATION_FILE, 'w') as f:
+            json.dump(new_baselines, f)
+            
+        return jsonify({"status": "success", "message": "Baseline updated"})
+    except Exception as e:
+        print(f"Calibration error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/data')
 def get_data():
@@ -238,19 +323,22 @@ def get_data():
                 "status": zones["ENTRY"]["status"],
                 "distance": nodes["NODE_A"]["dist"],
                 "density": zones["ENTRY"]["density"],
-                "risk": zones["ENTRY"]["risk"]
+                "risk": zones["ENTRY"]["risk"],
+                "detection_type": zones["ENTRY"]["detection_type"]
             },
             "CENTER": {
                 "status": zones["CENTER"]["status"],
                 "distance": nodes["NODE_C"]["dist"],
                 "density": zones["CENTER"]["density"],
-                "risk": zones["CENTER"]["risk"]
+                "risk": zones["CENTER"]["risk"],
+                "detection_type": zones["CENTER"]["detection_type"]
             },
             "EXIT": {
                 "status": zones["EXIT"]["status"],
                 "distance": nodes["NODE_B"]["dist"],
                 "density": zones["EXIT"]["density"],
-                "risk": zones["EXIT"]["risk"]
+                "risk": zones["EXIT"]["risk"],
+                "detection_type": zones["EXIT"]["detection_type"]
             }
         },
         "audio": {
@@ -263,9 +351,9 @@ def get_data():
         "factors": result.get("factors", []),
         "recommendation": result.get("recommendation", ""),
         "nodes": {
-            "NODE_A": {"online": nodes["NODE_A"]["online"]},
-            "NODE_B": {"online": nodes["NODE_B"]["online"]},
-            "NODE_C": {"online": nodes["NODE_C"]["online"]}
+            "NODE_A": {"online": nodes["NODE_A"]["online"], "uptime": nodes["NODE_A"]["uptime"]},
+            "NODE_B": {"online": nodes["NODE_B"]["online"], "uptime": nodes["NODE_B"]["uptime"]},
+            "NODE_C": {"online": nodes["NODE_C"]["online"], "uptime": nodes["NODE_C"]["uptime"]}
         }
     })
 

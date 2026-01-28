@@ -1,13 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stampede Shield - Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
+
 <body class="dark">
-    
+
     <!-- HEADER -->
     <header class="header">
         <div class="header-left">
@@ -20,6 +22,7 @@
             </span>
         </div>
         <div class="header-right">
+            <button class="calibrate-btn" onclick="calibrateSystem()">⚙️ Calibrate</button>
             <span class="timestamp">Last Update: <span id="timestamp">--:--:--</span></span>
             <button class="theme-toggle" id="themeToggle" title="Toggle Theme">🌙</button>
             <button class="fullscreen-btn" id="fullscreenBtn" title="Fullscreen">⛶</button>
@@ -28,10 +31,10 @@
 
     <!-- MAIN CONTENT -->
     <main class="main-container">
-        
+
         <!-- LEFT PANEL -->
         <aside class="left-panel">
-            
+
             <!-- RISK CARD -->
             <div class="card risk-card" id="riskCard">
                 <div class="card-header">RISK LEVEL</div>
@@ -67,22 +70,30 @@
                     <div class="cpi-breakdown">
                         <div class="cpi-item">
                             <span>Density</span>
-                            <div class="cpi-bar"><div class="cpi-bar-fill" id="densityBar"></div></div>
+                            <div class="cpi-bar">
+                                <div class="cpi-bar-fill" id="densityBar"></div>
+                            </div>
                             <span id="densityValue">0%</span>
                         </div>
                         <div class="cpi-item">
                             <span>Motion</span>
-                            <div class="cpi-bar"><div class="cpi-bar-fill" id="motionBar"></div></div>
+                            <div class="cpi-bar">
+                                <div class="cpi-bar-fill" id="motionBar"></div>
+                            </div>
                             <span id="motionValue">0%</span>
                         </div>
                         <div class="cpi-item">
                             <span>Audio</span>
-                            <div class="cpi-bar"><div class="cpi-bar-fill" id="audioBar"></div></div>
+                            <div class="cpi-bar">
+                                <div class="cpi-bar-fill" id="audioBar"></div>
+                            </div>
                             <span id="audioValue">0%</span>
                         </div>
                         <div class="cpi-item">
                             <span>Trend</span>
-                            <div class="cpi-bar"><div class="cpi-bar-fill" id="trendBar"></div></div>
+                            <div class="cpi-bar">
+                                <div class="cpi-bar-fill" id="trendBar"></div>
+                            </div>
                             <span id="trendValue">0%</span>
                         </div>
                     </div>
@@ -121,7 +132,7 @@
 
         <!-- RIGHT CONTENT -->
         <section class="right-content">
-            
+
             <!-- CORRIDOR HEATMAP -->
             <div class="card heatmap-card">
                 <div class="card-header">CORRIDOR MAP</div>
@@ -129,18 +140,21 @@
                     <div class="corridor">
                         <div class="zone" id="entryZone">
                             <div class="zone-label">ENTRY</div>
+                            <div class="zone-detection" id="entryDetection">--</div>
                             <div class="zone-distance"><span id="entryDist">--</span> cm</div>
                             <div class="zone-density"><span id="entryDensity">--</span>/m²</div>
                         </div>
                         <div class="flow-arrow">→</div>
                         <div class="zone" id="centerZone">
                             <div class="zone-label">CENTER</div>
+                            <div class="zone-detection" id="centerDetection">--</div>
                             <div class="zone-distance"><span id="centerDist">--</span> cm</div>
                             <div class="zone-density"><span id="centerDensity">--</span>/m²</div>
                         </div>
                         <div class="flow-arrow">→</div>
                         <div class="zone" id="exitZone">
                             <div class="zone-label">EXIT</div>
+                            <div class="zone-detection" id="exitDetection">--</div>
                             <div class="zone-distance"><span id="exitDist">--</span> cm</div>
                             <div class="zone-density"><span id="exitDensity">--</span>/m²</div>
                         </div>
@@ -237,4 +251,5 @@
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
+
 </html>

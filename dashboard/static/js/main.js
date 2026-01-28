@@ -16,7 +16,7 @@ const elements = {
     timestamp: document.getElementById('timestamp'),
     themeToggle: document.getElementById('themeToggle'),
     fullscreenBtn: document.getElementById('fullscreenBtn'),
-    
+
     // Risk Card
     riskCard: document.getElementById('riskCard'),
     riskEmoji: document.getElementById('riskEmoji'),
@@ -25,7 +25,7 @@ const elements = {
     riskProgress: document.getElementById('riskProgress'),
     riskConfidence: document.getElementById('riskConfidence'),
     riskConfidenceBar: document.getElementById('riskConfidenceBar'),
-    
+
     // CPI Card
     cpiValue: document.getElementById('cpiValue'),
     cpiConfidence: document.getElementById('cpiConfidence'),
@@ -38,15 +38,15 @@ const elements = {
     audioValue: document.getElementById('audioValue'),
     trendBar: document.getElementById('trendBar'),
     trendValue: document.getElementById('trendValue'),
-    
+
     // Time Card
     timeToCritical: document.getElementById('timeToCritical'),
-    
+
     // Node Status
     nodeAStatus: document.getElementById('nodeAStatus'),
     nodeBStatus: document.getElementById('nodeBStatus'),
     nodeCStatus: document.getElementById('nodeCStatus'),
-    
+
     // Zones
     entryZone: document.getElementById('entryZone'),
     centerZone: document.getElementById('centerZone'),
@@ -57,28 +57,31 @@ const elements = {
     entryDensity: document.getElementById('entryDensity'),
     centerDensity: document.getElementById('centerDensity'),
     exitDensity: document.getElementById('exitDensity'),
-    
+    entryDetection: document.getElementById('entryDetection'),
+    centerDetection: document.getElementById('centerDetection'),
+    exitDetection: document.getElementById('exitDetection'),
+
     // Timeline
     timelineNow: document.getElementById('timelineNow'),
     timeline30: document.getElementById('timeline30'),
     timeline60: document.getElementById('timeline60'),
     timeline120: document.getElementById('timeline120'),
-    
+
     // Audio
     audioLevel: document.getElementById('audioLevel'),
     audioState: document.getElementById('audioState'),
     audioBarFill: document.getElementById('audioBarFill'),
-    
+
     // Actions
     actionsList: document.getElementById('actionsList'),
-    
+
     // Factors
     factorsList: document.getElementById('factorsList'),
-    
+
     // Alert Bar
     alertBar: document.getElementById('alertBar'),
     recommendation: document.getElementById('recommendation'),
-    
+
     // Sound
     alertSound: document.getElementById('alertSound')
 };
@@ -99,6 +102,16 @@ const STATUS_CLASS = {
     'ORANGE': 'moderate',
     'RED': 'high',
     'BLACK': 'critical'
+};
+
+// Detection type configuration for display
+const DETECTION_TYPES = {
+    'WALL': { emoji: '🧱', label: 'Wall', class: 'ignored' },
+    'STATIC_OBJECT': { emoji: '📦', label: 'Static Object', class: 'ignored' },
+    'SINGLE_PERSON': { emoji: '👤', label: 'Single Person', class: 'low-activity' },
+    'CROWD': { emoji: '👥', label: 'Crowd', class: 'active' },
+    'CLEAR': { emoji: '✅', label: 'Clear', class: 'clear' },
+    'UNKNOWN': { emoji: '❓', label: 'Scanning...', class: 'unknown' }
 };
 
 /* ========================================
@@ -156,40 +169,40 @@ async function fetchData() {
 function updateDashboard(data) {
     // Update timestamp
     elements.timestamp.textContent = data.timestamp;
-    
+
     // Update Risk Card
     updateRiskCard(data.risk);
-    
+
     // Update CPI Card
     updateCPICard(data.cpi);
-    
+
     // Update Time to Critical
     updateTimeToCritical(data.time_to_critical);
-    
+
     // Update Node Status
     updateNodeStatus(data.nodes);
-    
+
     // Update Zones
     updateZones(data.zones);
-    
+
     // Update Timeline
     updateTimeline(data.timeline);
-    
+
     // Update Audio
     updateAudio(data.audio);
-    
+
     // Update Actions
     updateActions(data.actions);
-    
+
     // Update Factors
     updateFactors(data.factors);
-    
+
     // Update Alert Bar
     updateAlertBar(data.risk.level, data.recommendation);
-    
+
     // Handle sound alert
     handleSoundAlert(data.risk.level);
-    
+
     // Handle emergency mode
     handleEmergencyMode(data.risk.level);
 }
@@ -201,17 +214,17 @@ function updateDashboard(data) {
 function updateRiskCard(risk) {
     const level = risk.level;
     const config = LEVELS[level] || LEVELS['SAFE'];
-    
+
     elements.riskEmoji.textContent = config.emoji;
     elements.riskLevel.textContent = level;
     elements.riskScore.textContent = risk.score;
     elements.riskProgress.style.width = `${risk.score}%`;
     elements.riskConfidence.textContent = risk.confidence;
     elements.riskConfidenceBar.style.width = `${risk.confidence}%`;
-    
+
     // Update progress bar color
     elements.riskProgress.style.background = getColorForLevel(level);
-    
+
     // Update card class
     elements.riskCard.className = `card risk-card ${config.color}`;
 }
@@ -220,19 +233,19 @@ function updateCPICard(cpi) {
     elements.cpiValue.textContent = cpi.value.toFixed(1);
     elements.cpiConfidence.textContent = cpi.confidence;
     elements.cpiConfidenceBar.style.width = `${cpi.confidence}%`;
-    
+
     if (cpi.breakdown) {
         const b = cpi.breakdown;
-        
+
         elements.densityBar.style.width = `${b.density || 0}%`;
         elements.densityValue.textContent = `${(b.density || 0).toFixed(0)}%`;
-        
+
         elements.motionBar.style.width = `${b.motion || 0}%`;
         elements.motionValue.textContent = `${(b.motion || 0).toFixed(0)}%`;
-        
+
         elements.audioBar.style.width = `${b.audio || 0}%`;
         elements.audioValue.textContent = `${(b.audio || 0).toFixed(0)}%`;
-        
+
         elements.trendBar.style.width = `${b.trend || 0}%`;
         elements.trendValue.textContent = `${(b.trend || 0).toFixed(0)}%`;
     }
@@ -260,18 +273,27 @@ function updateZones(zones) {
     elements.entryZone.className = `zone ${entryClass}`;
     elements.entryDist.textContent = zones.ENTRY.distance.toFixed(1);
     elements.entryDensity.textContent = zones.ENTRY.density.toFixed(1);
-    
+    updateDetectionType(elements.entryDetection, zones.ENTRY.detection_type);
+
     // Center Zone
     const centerClass = STATUS_CLASS[zones.CENTER.status] || 'safe';
     elements.centerZone.className = `zone ${centerClass}`;
     elements.centerDist.textContent = zones.CENTER.distance.toFixed(1);
     elements.centerDensity.textContent = zones.CENTER.density.toFixed(1);
-    
+    updateDetectionType(elements.centerDetection, zones.CENTER.detection_type);
+
     // Exit Zone
     const exitClass = STATUS_CLASS[zones.EXIT.status] || 'safe';
     elements.exitZone.className = `zone ${exitClass}`;
     elements.exitDist.textContent = zones.EXIT.distance.toFixed(1);
     elements.exitDensity.textContent = zones.EXIT.density.toFixed(1);
+    updateDetectionType(elements.exitDetection, zones.EXIT.detection_type);
+}
+
+function updateDetectionType(element, detectionType) {
+    const config = DETECTION_TYPES[detectionType] || DETECTION_TYPES['UNKNOWN'];
+    element.textContent = `${config.emoji} ${config.label}`;
+    element.className = `zone-detection ${config.class}`;
 }
 
 function updateTimeline(timeline) {
@@ -291,7 +313,7 @@ function updateAudio(audio) {
     elements.audioLevel.textContent = audio.level;
     elements.audioState.textContent = audio.state;
     elements.audioState.className = `audio-state ${audio.state.toLowerCase()}`;
-    
+
     // Audio bar (max 1000)
     const percentage = Math.min(100, (audio.level / 1000) * 100);
     elements.audioBarFill.style.width = `${percentage}%`;
@@ -299,7 +321,7 @@ function updateAudio(audio) {
 
 function updateActions(actions) {
     const priorityEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
-    
+
     elements.actionsList.innerHTML = actions.map((action, index) => `
         <div class="action-item">
             <span class="action-priority">${priorityEmojis[index] || '▪️'}</span>
@@ -311,17 +333,25 @@ function updateActions(actions) {
     `).join('');
 }
 
+function calibrateSystem() {
+    if (confirm("Ensure room is EMPTY. Calibrate now?")) {
+        fetch('/api/calibrate', { method: 'POST' })
+            .then(r => r.json())
+            .then(d => alert("Calibration Complete! Baseline updated."));
+    }
+}
+
 function updateFactors(factors) {
-    elements.factorsList.innerHTML = factors.map(factor => 
+    elements.factorsList.innerHTML = factors.map(factor =>
         `<li>${factor}</li>`
     ).join('');
 }
 
 function updateAlertBar(level, recommendation) {
     elements.recommendation.textContent = recommendation;
-    
+
     elements.alertBar.classList.remove('high', 'critical');
-    
+
     if (level === 'HIGH') {
         elements.alertBar.classList.add('high');
     } else if (level === 'CRITICAL') {
@@ -376,16 +406,16 @@ function handleEmergencyMode(level) {
 
 function init() {
     console.log('🚨 Stampede Shield Dashboard Initializing...');
-    
+
     // Initialize theme
     initTheme();
-    
+
     // Fetch data immediately
     fetchData();
-    
+
     // Set up refresh interval
     setInterval(fetchData, CONFIG.refreshRate);
-    
+
     console.log('✅ Dashboard Ready');
 }
 

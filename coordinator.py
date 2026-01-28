@@ -1,18 +1,24 @@
-from telegram_alert import TelegramAlert
-
-# Telegram Configuration
-# ⚠️ REPLACE WITH YOUR VALUES!
-TELEGRAM_TOKEN = "8549587786:AAGsxckHjHuV08SFK24SjwSYfaEC7ypJ8CQ"
-TELEGRAM_CHAT_ID = "6955686604"
-
-# Initialize Telegram
-telegram = TelegramAlert(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
-
-import paho.mqtt.client as mqtt
+import os
+import sys
 import json
 from datetime import datetime
-import sys
-import os
+
+import paho.mqtt.client as mqtt
+from telegram_alert import TelegramAlert
+
+# Telegram Configuration - Load from environment variables
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+    print("=" * 65)
+    print("  ⚠️  WARNING: Telegram credentials not configured!")
+    print("  Set TELEGRAM_TOKEN and TELEGRAM_CHAT_ID environment variables")
+    print("  Alerts will be disabled until credentials are provided.")
+    print("=" * 65)
+    telegram = None
+else:
+    telegram = TelegramAlert(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
 
 # Add algorithms to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'algorithms'))
@@ -39,6 +45,7 @@ nodes = {
 }
 
 message_count = 0
+mqtt_client = None  # Global reference for publishing commands
 
 
 def print_dashboard():
@@ -130,8 +137,12 @@ def print_dashboard():
     print(f"  {result['recommendation']}")
     print("=" * 65)
 
-        # Send Telegram alert if HIGH or CRITICAL
-    if result["level"] in ["HIGH", "CRITICAL"]:
+    # Publish alert level to Node C LEDs
+    if mqtt_client:
+        mqtt_client.publish("stampede/commands", result["level"])
+    
+    # Send Telegram alert if HIGH or CRITICAL
+    if result["level"] in ["HIGH", "CRITICAL"] and telegram:
         telegram.send_alert(
             result["level"],
             result["risk"],
@@ -199,6 +210,8 @@ def on_message(client, userdata, msg):
 
 
 def main():
+    global mqtt_client
+    
     print()
     print("=" * 65)
     print("         🚨 STAMPEDE PREVENTION SYSTEM 🚨")
@@ -208,6 +221,7 @@ def main():
     client = mqtt.Client()
     client.on_connect = on_connect
     client.on_message = on_message
+    mqtt_client = client  # Store reference for publishing
     
     try:
         print("\n  Connecting to broker...")

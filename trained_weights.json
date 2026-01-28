@@ -1,0 +1,42 @@
+{
+  "weights": {
+    "density": 0.0287,
+    "movement": 0.5635,
+    "audio": 0.3519,
+    "trend": 0.0559
+  },
+  "training_metadata": {
+    "timestamp": "2026-01-28T21:34:02.393986",
+    "model_type": "LogisticRegression",
+    "accuracy": 0.9557,
+    "precision": 0.942,
+    "recall": 0.9442,
+    "f1_score": 0.9431,
+    "auc_roc": 0.9816,
+    "cv_scores": [
+      0.9413,
+      0.9415,
+      0.9417,
+      0.9421,
+      0.943
+    ],
+    "cv_mean": 0.9419,
+    "cv_std": 0.0006
+  },
+  "feature_importance": {
+    "density": 5.1,
+    "movement": 100.0,
+    "audio": 62.4,
+    "trend": 9.9
+  },
+  "original_weights": {
+    "density": 0.35,
+    "movement": 0.25,
+    "audio": 0.2,
+    "trend": 0.2
+  },
+  "usage": {
+    "formula": "CPI = (density \u00d7 {density}) + (movement \u00d7 {movement}) + (audio \u00d7 {audio}) + (trend \u00d7 {trend})",
+    "note": "Weights are ML-optimized to maximize early warning detection"
+  }
+}

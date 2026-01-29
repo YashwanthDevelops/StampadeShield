@@ -16,10 +16,19 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'algorithms'))
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+except ImportError:
+    print("  ⚠️  python-dotenv not installed. Set environment variables manually.")
+
+
 from zone_detector import ZoneDetector
 from cluster_detector import ClusterDetector
 from stampede_predictor import StampedePredictor
 from simulator import simulator  # Simulation mode support
+from telegram_alert import TelegramAlert
 
 app = Flask(__name__)
 
@@ -27,6 +36,21 @@ app = Flask(__name__)
 zone_detector = ZoneDetector()
 cluster_detector = ClusterDetector()
 predictor = StampedePredictor(zone_detector, cluster_detector)
+
+# Telegram Configuration - Load from environment variables
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+    print("=" * 65)
+    print("  ⚠️  WARNING: Telegram credentials not configured!")
+    print("  Set TELEGRAM_TOKEN and TELEGRAM_CHAT_ID environment variables")
+    print("  Alerts will be disabled until credentials are provided.")
+    print("=" * 65)
+    telegram = None
+else:
+    telegram = TelegramAlert(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
+    print("  ✅ Telegram alerts enabled")
 
 CALIBRATION_FILE = 'calibration.json'
 
@@ -455,6 +479,16 @@ def get_data():
     
     result = predictor.predict(combined_audio)
     zones = zone_detector.get_all_zones()
+    
+    # Send Telegram alert if HIGH or CRITICAL
+    if result["level"] in ["HIGH", "CRITICAL"] and telegram:
+        telegram.send_alert(
+            result["level"],
+            result["risk"],
+            result["cpi"],
+            result["recommendation"],
+            result.get("factors", [])
+        )
     
     # Check node online status
     for node_id, node in nodes.items():
